@@ -40,12 +40,26 @@ async function main() {
   // ==========================================
   // STUDENT SEEDING
   // ==========================================
+  
+  // Clear existing students to ensure ONLY the requested data is kept
+  await prisma.student.deleteMany({});
+  console.log('🧹 Cleared all existing students.');
+
   const demoStudents = [
-    { serialNo: 1, rollNumber: '22CS101', name: 'Arun Kumar', timetable: 'CSE A - Morning', barcode: 'BC22CS101' },
-    { serialNo: 2, rollNumber: '22CS102', name: 'Bhavya Reddy', timetable: 'CSE A - Morning', barcode: 'BC22CS102' },
-    { serialNo: 3, rollNumber: '22CS103', name: 'Chandra Mohan', timetable: 'CSE A - Morning', barcode: 'BC22CS103' },
-    { serialNo: 4, rollNumber: '22CS201', name: 'Divya Sri', timetable: 'CSE B - Afternoon', barcode: 'BC22CS201' },
-    { serialNo: 5, rollNumber: '22CS202', name: 'Esha Gupta', timetable: 'CSE B - Afternoon', barcode: 'BC22CS202' },
+    { serialNo: 1, rollNumber: '24B11AI085', name: 'DEVARAKONDA SRI SASHANK', timetable: 'T4(CA2)', barcode: 'BC24B11AI085' },
+    { serialNo: 2, rollNumber: '24B11AI242', name: 'MANDA NAGA BHAVANI PRASAD REDDY', timetable: 'T5(T-HUB)', barcode: 'BC24B11AI242' },
+    { serialNo: 3, rollNumber: '24B11AI062', name: 'CHIKKALA SRI NAGA VIJAY KUMAR', timetable: 'T5(T-HUB)', barcode: 'BC24B11AI062' },
+    { serialNo: 4, rollNumber: '24B11AI139', name: 'GUVVALA SAI SRI PAVAN', timetable: 'T4(CA2)', barcode: 'BC24B11AI139' },
+    { serialNo: 5, rollNumber: '24B11AI124', name: 'GODAVARTHI SAI HARSHA', timetable: 'T4(CA2)', barcode: 'BC24B11AI124' },
+    { serialNo: 6, rollNumber: '24B11AI125', name: 'DEVARAKONDA GOHIT', timetable: 'T4(CA2)', barcode: 'BC24B11AI125' },
+    { serialNo: 7, rollNumber: '24B11AI417', name: 'TEEPARTHI LALITHA CHANDRA SREENIJA', timetable: 'T5(T-HUB)', barcode: 'BC24B11AI417' },
+    { serialNo: 8, rollNumber: '24B11AI019', name: 'ARIGELA TEJASRI SAI SANTHOSH', timetable: 'T5(T-HUB)', barcode: 'BC24B11AI019' },
+    { serialNo: 9, rollNumber: '24B11AI228', name: 'MADDURI RAMA VENKATA SATYA CHITTI NAGA SAI', timetable: 'T5(T-HUB)', barcode: 'BC24B11AI228' },
+    { serialNo: 10, rollNumber: '24B11AI248', name: 'MANTRIPRAGADA SAI HARSHITH', timetable: 'T5(T-HUB)', barcode: 'BC24B11AI248' },
+    { serialNo: 11, rollNumber: '24B11AI262', name: 'MOHAMMED AKMAL KANNA MANGALAM', timetable: 'T5(T-HUB)', barcode: 'BC24B11AI262' },
+    { serialNo: 12, rollNumber: '24B11AI217', name: 'LEKKALA ATCHUT KUMAR', timetable: 'T4(CA2)', barcode: 'BC24B11AI217' },
+    { serialNo: 13, rollNumber: '24B11AI252', name: 'MATCHA KUMAR BABU', timetable: 'T4(CA2)', barcode: 'BC24B11AI252' },
+    { serialNo: 14, rollNumber: '24B11AI400', name: 'SINGAM MAHIDAR', timetable: 'T4(CA2)', barcode: 'BC24B11AI400' },
   ];
 
   for (const student of demoStudents) {

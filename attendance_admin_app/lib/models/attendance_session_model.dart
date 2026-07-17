@@ -26,6 +26,16 @@ class AttendanceSessionModel {
   });
 
   factory AttendanceSessionModel.fromJson(Map<String, dynamic> json) {
+    // Parse attendanceCount from Prisma's _count.records format.
+    // Falls back to legacy 'attendanceCount' key for compatibility.
+    int attendanceCount = 0;
+    final countData = json['_count'];
+    if (countData != null && countData is Map) {
+      attendanceCount = (countData['records'] as int?) ?? 0;
+    } else {
+      attendanceCount = (json['attendanceCount'] as int?) ?? 0;
+    }
+
     return AttendanceSessionModel(
       id: json['id'] as String,
       status: json['status'] as String,
@@ -37,7 +47,7 @@ class AttendanceSessionModel {
       sectionId: json['sectionId'] as String?,
       sessionTime: json['sessionTime'] as String?,
       labIncharge: json['labIncharge'] as String?,
-      attendanceCount: json['attendanceCount'] as int? ?? 0,
+      attendanceCount: attendanceCount,
     );
   }
 

@@ -36,9 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) return;
 
-    if (success) {
-      Navigator.pushReplacementNamed(context, '/workspace');
-    } else {
+    if (!success) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(authProvider.errorMessage ?? 'Login failed'),
@@ -46,6 +44,9 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     }
+    // On success, do NOT navigate manually.
+    // AuthProvider.isAuthenticated becomes true → AuthWrapper rebuilds → navigates to RecoveryWrapper.
+    // This ensures session recovery always runs after login.
   }
 
   @override

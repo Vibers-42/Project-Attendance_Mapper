@@ -10,12 +10,12 @@ const ROLES = Object.freeze({
 
 const AUTH_MESSAGES = Object.freeze({
   LOGIN_SUCCESS: 'Login successful.',
-  INVALID_CREDENTIALS: 'Invalid email or password.',
+  INVALID_CREDENTIALS: 'Invalid faculty ID or password.',
   TOKEN_MISSING: 'Access denied. No authentication token provided.',
   TOKEN_INVALID: 'Access denied. Invalid or malformed token.',
   TOKEN_EXPIRED: 'Access denied. Token has expired.',
   FORBIDDEN: 'You do not have permission to access this resource.',
-  ACCOUNT_NOT_FOUND: 'No account found with this email.',
+  ACCOUNT_NOT_FOUND: 'No account found with this faculty ID.',
 });
 
 const TOKEN_HEADER = 'authorization';

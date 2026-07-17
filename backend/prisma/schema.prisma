@@ -36,31 +36,31 @@ model Faculty {
 }
 
 model AcademicYear {
-  id       String              @id @default(uuid())
-  name     String              @unique // e.g. "2024-2025"
+  id               String              @id @default(uuid())
+  name             String              @unique // e.g. "2024-2025"
   students         Student[]
   sessions         AttendanceSession[]
   timetableEntries TimetableEntry[]
 }
 
 model Section {
-  id       String              @id @default(uuid())
-  name     String              @unique // e.g. "A", "B"
+  id               String              @id @default(uuid())
+  name             String              @unique // e.g. "A", "B"
   students         Student[]
   sessions         AttendanceSession[]
   timetableEntries TimetableEntry[]
 }
 
 model Room {
-  id       String              @id @default(uuid())
-  name     String              @unique // e.g. "Lab 1"
+  id               String              @id @default(uuid())
+  name             String              @unique // e.g. "Lab 1"
   sessions         AttendanceSession[]
   timetableEntries TimetableEntry[]
 }
 
 model Subject {
-  id       String              @id @default(uuid())
-  name     String              @unique // e.g. "Data Structures"
+  id               String              @id @default(uuid())
+  name             String              @unique // e.g. "Data Structures"
   code             String              @unique
   sessions         AttendanceSession[]
   timetableEntries TimetableEntry[]
@@ -74,31 +74,34 @@ enum StudentStatus {
 }
 
 model Department {
-  id       String    @id @default(uuid())
-  name     String    @unique // e.g. "Computer Science"
+  id               String           @id @default(uuid())
+  name             String           @unique // e.g. "Computer Science"
   code             String           @unique // e.g. "CSE"
   students         Student[]
   timetableEntries TimetableEntry[]
 }
 
 model Student {
-  rollNumber     String       @id // Using roll number as primary key
-  name           String
-  barcode        String       @unique // Barcode value scanned by faculty
-  
-  academicYearId String
-  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
-  
-  semester       Int?         // 1 to 8
-  
-  sectionId      String
-  section        Section      @relation(fields: [sectionId], references: [id])
-  
-  departmentId   String?
-  department     Department?  @relation(fields: [departmentId], references: [id])
-  
-  batch          String?      // e.g. "2020-2024"
-  status         StudentStatus @default(ACTIVE)
+  id         String  @id @default(uuid())
+  serialNo   Int?
+  rollNumber String  @unique
+  name       String
+  barcode    String  @unique
+  timetable  String?
+
+  academicYearId String?
+  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id])
+
+  semester Int?
+
+  sectionId String?
+  section   Section? @relation(fields: [sectionId], references: [id])
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  batch  String?
+  status StudentStatus @default(ACTIVE)
 
   attendanceRecords AttendanceRecord[]
 
@@ -111,10 +114,10 @@ model Student {
 }
 
 model AttendanceSession {
-  id          String   @id @default(uuid())
+  id          String        @id @default(uuid())
   status      SessionStatus @default(CREATED)
-  date        DateTime @db.Date
-  sessionTime String? 
+  date        DateTime      @db.Date
+  sessionTime String?
   labIncharge String?
 
   facultyId String
@@ -168,37 +171,37 @@ enum DayOfWeek {
 }
 
 model TimetableEntry {
-  id             String       @id @default(uuid())
-  
+  id String @id @default(uuid())
+
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
-  
-  departmentId   String
-  department     Department   @relation(fields: [departmentId], references: [id])
-  
-  semester       Int
-  
-  sectionId      String
-  section        Section      @relation(fields: [sectionId], references: [id])
-  
-  subjectId      String
-  subject        Subject      @relation(fields: [subjectId], references: [id])
-  
-  facultyId      String
-  faculty        Faculty      @relation(fields: [facultyId], references: [id])
-  
-  roomId         String?
-  room           Room?        @relation(fields: [roomId], references: [id])
-  
-  dayOfWeek      DayOfWeek
-  period         String       // e.g., "1", "2", "Lab-Afternoon"
-  startTime      String?      // e.g., "09:00"
-  endTime        String?      // e.g., "10:00"
 
-  isLab          Boolean      @default(false)
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
 
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  semester Int
+
+  sectionId String
+  section   Section @relation(fields: [sectionId], references: [id])
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  facultyId String
+  faculty   Faculty @relation(fields: [facultyId], references: [id])
+
+  roomId String?
+  room   Room?   @relation(fields: [roomId], references: [id])
+
+  dayOfWeek DayOfWeek
+  period    String // e.g., "1", "2", "Lab-Afternoon"
+  startTime String? // e.g., "09:00"
+  endTime   String? // e.g., "10:00"
+
+  isLab Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([academicYearId, departmentId, semester, sectionId])
   @@index([facultyId, dayOfWeek])

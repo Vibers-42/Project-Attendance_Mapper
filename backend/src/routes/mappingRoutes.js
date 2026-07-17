@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const MappingController = require('../controllers/MappingController');
-const authMiddleware = require('../middleware/authMiddleware');
+const authenticate = require('../middleware/authenticate');
 
-// Apply auth middleware to all mapping routes
-router.use(authMiddleware);
+// Apply authentication to all mapping routes
+router.use(authenticate);
 
 // Define routes
 router.get('/prepare/:sessionId', MappingController.prepareContext);

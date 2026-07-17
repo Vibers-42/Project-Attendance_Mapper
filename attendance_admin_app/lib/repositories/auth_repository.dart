@@ -12,6 +12,13 @@ class AuthRepository {
 
   AuthRepository(this._apiService, this._storageService);
 
+  /// Returns true if a JWT token is currently stored in secure storage.
+  /// Used by AuthProvider to skip the /me request on cold boot if no token exists.
+  Future<bool> hasToken() async {
+    final token = await _storageService.getToken();
+    return token != null && token.isNotEmpty;
+  }
+
   Future<FacultyModel> login(String facultyId, String password) async {
     try {
       final response = await _apiService.client.post(
@@ -27,7 +34,7 @@ class AuthRepository {
       if (authResponse.success && authResponse.data != null) {
         final token = authResponse.data!['token'] as String;
         final facultyJson = authResponse.data!['faculty'] as Map<String, dynamic>;
-        
+
         await _storageService.saveToken(token);
         return FacultyModel.fromJson(facultyJson);
       } else {

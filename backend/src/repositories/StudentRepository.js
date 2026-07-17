@@ -9,10 +9,15 @@ class StudentRepository {
     return prisma.student.findUnique({ where: { barcode } });
   }
 
+  // Finds all students belonging to a specific academic year and section.
+  // Used by Attendance Mapping to identify which students should be in a session.
   async findAllByYearAndSection(academicYearId, sectionId) {
     return prisma.student.findMany({
       where: { academicYearId, sectionId },
       orderBy: { rollNumber: 'asc' },
+    });
+  }
+
   async findAll(filters = {}, skip = 0, take = 50) {
     const where = {};
     if (filters.status) where.status = filters.status;
@@ -27,7 +32,7 @@ class StudentRepository {
       include: {
         department: true,
         academicYear: true,
-        section: true
+        section: true,
       },
       orderBy: { rollNumber: 'asc' },
     });
@@ -54,8 +59,8 @@ class StudentRepository {
       take: limit,
       include: {
         department: true,
-        section: true
-      }
+        section: true,
+      },
     });
   }
 }

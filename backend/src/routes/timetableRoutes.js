@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const TimetableController = require('../controllers/TimetableController');
-const authMiddleware = require('../middleware/authMiddleware');
+const authenticate = require('../middleware/authenticate');
 
-// Apply auth middleware to all timetable routes
-router.use(authMiddleware);
+// Apply authentication to all timetable routes
+router.use(authenticate);
 
 // Define routes
 router.get('/', TimetableController.getTimetable);

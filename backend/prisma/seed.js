@@ -36,6 +36,32 @@ async function main() {
   }
 
   console.log('✅ Successfully seeded 10 Faculty demo accounts.');
+
+  // ==========================================
+  // STUDENT SEEDING
+  // ==========================================
+  const demoStudents = [
+    { serialNo: 1, rollNumber: '22CS101', name: 'Arun Kumar', timetable: 'CSE A - Morning', barcode: 'BC22CS101' },
+    { serialNo: 2, rollNumber: '22CS102', name: 'Bhavya Reddy', timetable: 'CSE A - Morning', barcode: 'BC22CS102' },
+    { serialNo: 3, rollNumber: '22CS103', name: 'Chandra Mohan', timetable: 'CSE A - Morning', barcode: 'BC22CS103' },
+    { serialNo: 4, rollNumber: '22CS201', name: 'Divya Sri', timetable: 'CSE B - Afternoon', barcode: 'BC22CS201' },
+    { serialNo: 5, rollNumber: '22CS202', name: 'Esha Gupta', timetable: 'CSE B - Afternoon', barcode: 'BC22CS202' },
+  ];
+
+  for (const student of demoStudents) {
+    await prisma.student.upsert({
+      where: { rollNumber: student.rollNumber },
+      update: {
+        name: student.name,
+        timetable: student.timetable,
+        barcode: student.barcode,
+        serialNo: student.serialNo
+      },
+      create: student
+    });
+  }
+
+  console.log(`✅ Successfully seeded ${demoStudents.length} Student Master records.`);
 }
 
 main()

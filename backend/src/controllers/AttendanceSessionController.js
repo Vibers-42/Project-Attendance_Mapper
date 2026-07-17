@@ -34,7 +34,8 @@ class AttendanceSessionController {
     return sendSuccess(res, {
       data: { session },
       message: 'Attendance session created successfully.',
-    }, 201);
+      statusCode: 201,
+    });
   }
 
   async getSession(req, res) {

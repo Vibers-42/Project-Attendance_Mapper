@@ -1,27 +1,29 @@
 const prisma = require('../config/prisma');
 
+// Shared include block to avoid repetition across all queries.
+// Includes _count.records so Flutter can display how many students attended each session.
+const SESSION_INCLUDE = {
+  subject: true,
+  room: true,
+  academicYear: true,
+  section: true,
+  _count: {
+    select: { records: true },
+  },
+};
+
 class AttendanceSessionRepository {
   async create(data) {
     return prisma.attendanceSession.create({
       data,
-      include: {
-        subject: true,
-        room: true,
-        academicYear: true,
-        section: true,
-      },
+      include: SESSION_INCLUDE,
     });
   }
 
   async findById(id) {
     return prisma.attendanceSession.findUnique({
       where: { id },
-      include: {
-        subject: true,
-        room: true,
-        academicYear: true,
-        section: true,
-      },
+      include: SESSION_INCLUDE,
     });
   }
 
@@ -29,12 +31,7 @@ class AttendanceSessionRepository {
     return prisma.attendanceSession.findMany({
       where: { facultyId },
       orderBy: { date: 'desc' },
-      include: {
-        subject: true,
-        room: true,
-        academicYear: true,
-        section: true,
-      },
+      include: SESSION_INCLUDE,
     });
   }
 
@@ -45,12 +42,7 @@ class AttendanceSessionRepository {
         skip,
         take,
         orderBy,
-        include: {
-          subject: true,
-          room: true,
-          academicYear: true,
-          section: true,
-        },
+        include: SESSION_INCLUDE,
       }),
       prisma.attendanceSession.count({ where }),
     ]);
@@ -62,12 +54,7 @@ class AttendanceSessionRepository {
     return prisma.attendanceSession.update({
       where: { id },
       data,
-      include: {
-        subject: true,
-        room: true,
-        academicYear: true,
-        section: true,
-      },
+      include: SESSION_INCLUDE,
     });
   }
 }

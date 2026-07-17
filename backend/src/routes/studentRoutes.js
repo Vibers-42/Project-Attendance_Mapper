@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const StudentController = require('../controllers/StudentController');
-const authMiddleware = require('../middleware/authMiddleware');
+const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 
-// Apply auth middleware to all student routes
-router.use(authMiddleware);
+// Apply authentication to all student routes
+router.use(authenticate);
 
 // Define routes
 router.get('/', StudentController.getStudents);

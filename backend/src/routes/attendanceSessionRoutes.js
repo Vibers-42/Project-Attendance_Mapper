@@ -9,8 +9,8 @@ const { startSessionSchema } = require('../validators/attendanceValidator');
 // Apply authentication to all session routes
 router.use(authenticate);
 
-// We require FACULTY role for creating and managing their own sessions
-router.use(authorize('FACULTY'));
+// We allow both FACULTY and SUPER_ADMIN to manage sessions.
+router.use(authorize('FACULTY', 'SUPER_ADMIN'));
 
 // GET /api/v1/sessions
 // List paginated sessions

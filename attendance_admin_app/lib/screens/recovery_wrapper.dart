@@ -52,7 +52,7 @@ class _RecoveryWrapperState extends State<RecoveryWrapper> {
       // The Snackbar will persist across the screen transition automatically.
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ScannerScreen()),
+          MaterialPageRoute(builder: (_) => const FacultyWorkspaceScreen()),
         );
       }
     } else {

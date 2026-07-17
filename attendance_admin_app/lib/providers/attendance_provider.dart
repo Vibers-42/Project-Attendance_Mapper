@@ -10,6 +10,9 @@ class AttendanceProvider with ChangeNotifier {
 
   List<String> _scannedStudents = [];
   String? _lastScanned;
+  
+  // Maps barcode -> rollNumber, or rollNumber -> rollNumber for valid students
+  Map<String, String> _validStudents = {};
 
   // Session Details
   String? _sessionId;
@@ -85,9 +88,10 @@ class AttendanceProvider with ChangeNotifier {
       final sessionModel = await _sessionRepository.createSession({
         'date': date.toIso8601String(),
         'labIncharge': labIncharge,
-        // Assuming string inputs match master data for now, 
-        // later UI will send proper UUIDs when Master Data is integrated.
       });
+
+      // Fetch the valid students for client-side validation
+      _validStudents = await _sessionRepository.getValidStudents();
 
       // 2. Initialize locally with the generated backend sessionId
       _sessionId = sessionModel.id;
@@ -120,21 +124,41 @@ class AttendanceProvider with ChangeNotifier {
   }
 
   bool hasScanned(String rollNumber) {
-    return _scannedStudents.contains(rollNumber.trim().toUpperCase());
+    String normalized = rollNumber.trim().toUpperCase();
+    if (_validStudents.isNotEmpty && _validStudents.containsKey(normalized)) {
+      normalized = _validStudents[normalized]!;
+    }
+    return _scannedStudents.contains(normalized);
   }
 
-  bool addStudent(String rollNumber) {
+  /// Returns null on success, or an error message on failure
+  String? addStudent(String rawInput) {
+    String normalized = rawInput.trim().toUpperCase();
+    
+    // Client-side validation against Master Data
+    if (_validStudents.isNotEmpty) {
+      if (!_validStudents.containsKey(normalized)) {
+        return 'Student not registered in Master Data.';
+      }
+      // Map barcode to actual roll number
+      normalized = _validStudents[normalized]!;
+    }
+    
+    if (_scannedStudents.contains(normalized)) {
+      return 'Attendance Already Recorded.';
+    }
+
     bool success = _localRepository.saveAttendanceLocally(
-      rollNumber: rollNumber,
+      rollNumber: normalized,
       currentList: _scannedStudents,
     );
     
     if (success) {
-      _lastScanned = rollNumber.trim().toUpperCase();
+      _lastScanned = normalized;
       notifyListeners();
-      return true;
+      return null;
     }
-    return false;
+    return 'Failed to save attendance locally.';
   }
 
   void removeStudent(String rollNumber) {

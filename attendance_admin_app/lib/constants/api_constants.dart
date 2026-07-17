@@ -21,4 +21,7 @@ class ApiConstants {
   static const String sessions = '/sessions';
   static const String activeSession = '/sessions/active';
   static String sessionRecords(String id) => '/sessions/$id/records';
+
+  // Master Data Endpoints
+  static const String students = '/students';
 }

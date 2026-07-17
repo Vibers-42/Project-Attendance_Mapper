@@ -84,20 +84,19 @@ class _ScannerTabState extends State<ScannerTab> {
     
     final provider = Provider.of<AttendanceProvider>(context, listen: false);
     
-    if (provider.hasScanned(rollNumber)) {
-      _showSnackbar('Attendance Already Recorded: $rollNumber', isError: true);
+    final errorMsg = provider.addStudent(rollNumber);
+    
+    if (errorMsg != null) {
+      _showSnackbar(errorMsg, isError: true);
     } else {
-      final success = provider.addStudent(rollNumber);
-      if (success) {
-        _showSnackbar('✓ Attendance Recorded: $rollNumber', isError: false);
-        try {
-          bool? hasVibrator = await Vibration.hasVibrator();
-          if (hasVibrator == true) {
-            Vibration.vibrate(duration: 150);
-          }
-        } catch (e) {
-          // Ignore vibration errors on unsupported devices/emulators
+      _showSnackbar('✓ Attendance Recorded: ${provider.lastScanned}', isError: false);
+      try {
+        bool? hasVibrator = await Vibration.hasVibrator();
+        if (hasVibrator == true) {
+          Vibration.vibrate(duration: 150);
         }
+      } catch (e) {
+        // Ignore vibration errors on unsupported devices/emulators
       }
     }
   }

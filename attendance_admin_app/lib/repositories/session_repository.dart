@@ -53,4 +53,37 @@ class SessionRepository {
       throw ApiException(e.toString());
     }
   }
+
+  Future<Map<String, String>> getValidStudents() async {
+    try {
+      final response = await _apiService.client.get(
+        ApiConstants.students,
+        queryParameters: {'limit': 1000},
+      );
+
+      final authResponse = AuthResponseModel.fromJson(response.data);
+      if (authResponse.success && authResponse.data != null) {
+        final studentsList = authResponse.data as List<dynamic>;
+        final Map<String, String> validMap = {};
+        
+        for (var student in studentsList) {
+          final rollNumber = student['rollNumber']?.toString().toUpperCase();
+          final barcode = student['barcode']?.toString().toUpperCase();
+          
+          if (rollNumber != null) {
+            validMap[rollNumber] = rollNumber;
+            if (barcode != null) {
+              validMap[barcode] = rollNumber;
+            }
+          }
+        }
+        return validMap;
+      }
+      return {};
+    } catch (e) {
+      // If offline or fails, return empty map so we don't block session creation,
+      // but ideally we should cache this for offline use.
+      return {};
+    }
+  }
 }

@@ -6,6 +6,7 @@ class SecureStorageService {
   SecureStorageService() : _storage = const FlutterSecureStorage();
 
   static const String _keyToken = 'jwt_token';
+  static const String _keyUser = 'cached_user';
 
   Future<void> saveToken(String token) async {
     await _storage.write(key: _keyToken, value: token);
@@ -17,6 +18,18 @@ class SecureStorageService {
 
   Future<void> deleteToken() async {
     await _storage.delete(key: _keyToken);
+  }
+
+  Future<void> saveUser(String userJson) async {
+    await _storage.write(key: _keyUser, value: userJson);
+  }
+
+  Future<String?> getUser() async {
+    return await _storage.read(key: _keyUser);
+  }
+
+  Future<void> deleteUser() async {
+    await _storage.delete(key: _keyUser);
   }
 
   Future<void> clearAll() async {

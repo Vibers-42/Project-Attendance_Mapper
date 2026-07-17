@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../constants/api_constants.dart';
 import '../models/auth_response_model.dart';
@@ -19,6 +20,17 @@ class AuthRepository {
     return token != null && token.isNotEmpty;
   }
 
+  Future<FacultyModel?> getCachedUser() async {
+    final userJsonStr = await _storageService.getUser();
+    if (userJsonStr == null || userJsonStr.isEmpty) return null;
+    try {
+      final userMap = jsonDecode(userJsonStr) as Map<String, dynamic>;
+      return FacultyModel.fromJson(userMap);
+    } catch (e) {
+      return null; // Ignore parse errors on cached data
+    }
+  }
+
   Future<FacultyModel> login(String facultyId, String password) async {
     try {
       final response = await _apiService.client.post(
@@ -36,6 +48,8 @@ class AuthRepository {
         final facultyJson = authResponse.data!['faculty'] as Map<String, dynamic>;
 
         await _storageService.saveToken(token);
+        await _storageService.saveUser(jsonEncode(facultyJson));
+        
         return FacultyModel.fromJson(facultyJson);
       } else {
         throw ApiException(authResponse.message);
@@ -55,6 +69,8 @@ class AuthRepository {
 
       if (authResponse.success && authResponse.data != null) {
         final facultyJson = authResponse.data!['faculty'] as Map<String, dynamic>;
+        
+        await _storageService.saveUser(jsonEncode(facultyJson));
         return FacultyModel.fromJson(facultyJson);
       } else {
         throw ApiException(authResponse.message);
@@ -92,5 +108,6 @@ class AuthRepository {
 
   Future<void> logout() async {
     await _storageService.deleteToken();
+    await _storageService.deleteUser();
   }
 }

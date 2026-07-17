@@ -49,8 +49,7 @@ class _RecoveryWrapperState extends State<RecoveryWrapper> {
         ),
       );
 
-      // We wait a tiny bit to let the user see the "Recovered" state before pushing the route.
-      await Future.delayed(const Duration(seconds: 1));
+      // The Snackbar will persist across the screen transition automatically.
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const ScannerScreen()),

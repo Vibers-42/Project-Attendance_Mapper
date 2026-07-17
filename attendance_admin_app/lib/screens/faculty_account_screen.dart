@@ -87,7 +87,9 @@ class _FacultyAccountScreenState extends State<FacultyAccountScreen> {
             onPressed: () {
               Navigator.of(context).pop();
               Provider.of<AuthProvider>(context, listen: false).logout();
-              // The AuthWrapper in main.dart will automatically catch the state change and route to Login
+              
+              // Explicitly navigate to login and clear the entire stack
+              Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
             },
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Log Out'),

@@ -122,7 +122,7 @@ class AuthWrapper extends StatelessWidget {
     final authProvider = Provider.of<AuthProvider>(context);
 
     // Show loading screen while checking session on boot
-    if (authProvider.isLoading && !authProvider.isAuthenticated) {
+    if (authProvider.isCheckingAuth && !authProvider.isAuthenticated) {
       return const Scaffold(
         body: Center(
           child: CircularProgressIndicator(),

@@ -8,9 +8,9 @@ const startServer = async () => {
     await prisma.$connect();
     console.log('✅ Prisma connected to Supabase PostgreSQL successfully.');
 
-    // Start Express server
+    // Start Express server on all interfaces so physical phones can connect over Wi-Fi
     const PORT = environment.port;
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT} in ${environment.nodeEnv} mode.`);
     });
   } catch (error) {

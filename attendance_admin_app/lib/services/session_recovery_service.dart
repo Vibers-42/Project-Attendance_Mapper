@@ -20,8 +20,7 @@ class SessionRecoveryService {
 
   /// Checks for any active session data in Hive and validates it.
   Future<SessionRecoveryResult> attemptRecovery() async {
-    // Simulate a brief delay to show loading state (can be removed later)
-    await Future.delayed(const Duration(milliseconds: 500));
+    // No artificial delays; execute recovery synchronously based on local storage
 
     final data = _localRepository.restoreAttendance();
 

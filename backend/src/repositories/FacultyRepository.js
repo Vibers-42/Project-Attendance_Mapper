@@ -12,7 +12,6 @@ class FacultyRepository {
   async update(id, data) {
     return prisma.faculty.update({ where: { id }, data });
   }
-
   async findAll(filters = {}, skip = 0, take = 50) {
     const where = {};
     if (filters.isActive !== undefined) where.isActive = filters.isActive;

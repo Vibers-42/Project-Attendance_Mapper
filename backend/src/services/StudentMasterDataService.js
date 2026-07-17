@@ -1,6 +1,7 @@
 const StudentRepository = require('../repositories/StudentRepository');
 const DepartmentRepository = require('../repositories/DepartmentRepository');
 const { parseStudentExcel } = require('../utils/excelParser');
+
 class StudentMasterDataService {
   async getStudents(filters = {}, page = 1, limit = 50) {
     const skip = (page - 1) * limit;
@@ -38,6 +39,7 @@ class StudentMasterDataService {
   async getDepartments() {
     return await DepartmentRepository.findAll();
   }
+
   async uploadStudents(fileBuffer) {
     // 1. Parse Excel file and validate data
     const parsedStudents = parseStudentExcel(fileBuffer);
@@ -45,6 +47,7 @@ class StudentMasterDataService {
     // 2. Replace all existing students with the new parsed data
     const insertedCount = await StudentRepository.replaceStudents(parsedStudents);
     
+    // 3. Return outcome message
     return {
       insertedCount,
       message: `Successfully replaced Master Data with ${insertedCount} students.`

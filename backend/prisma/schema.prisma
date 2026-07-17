@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  FACULTY
+}
+
+enum SessionStatus {
+  CREATED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model Faculty {
+  id                String              @id @default(uuid())
+  facultyId         String              @unique
+  password          String
+  name              String
+  role              Role                @default(FACULTY)
+  isActive          Boolean             @default(true)
+  lastLoginAt       DateTime?
+  passwordChangedAt DateTime?
+  sessions          AttendanceSession[]
+  timetableEntries  TimetableEntry[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+}
+
+model AcademicYear {
+  id               String              @id @default(uuid())
+  name             String              @unique // e.g. "2024-2025"
+  students         Student[]
+  sessions         AttendanceSession[]
+  timetableEntries TimetableEntry[]
+}
+
+model Section {
+  id               String              @id @default(uuid())
+  name             String              @unique // e.g. "A", "B"
+  students         Student[]
+  sessions         AttendanceSession[]
+  timetableEntries TimetableEntry[]
+}
+
+model Room {
+  id               String              @id @default(uuid())
+  name             String              @unique // e.g. "Lab 1"
+  sessions         AttendanceSession[]
+  timetableEntries TimetableEntry[]
+}
+
+model Subject {
+  id               String              @id @default(uuid())
+  name             String              @unique // e.g. "Data Structures"
+  code             String              @unique
+  sessions         AttendanceSession[]
+  timetableEntries TimetableEntry[]
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+  TRANSFERRED
+}
+
+model Department {
+  id               String           @id @default(uuid())
+  name             String           @unique // e.g. "Computer Science"
+  code             String           @unique // e.g. "CSE"
+  students         Student[]
+  timetableEntries TimetableEntry[]
+}
+
+model Student {
+  id         String  @id @default(uuid())
+  serialNo   Int?
+  rollNumber String  @unique
+  name       String
+  barcode    String  @unique
+  timetable  String?
+
+  academicYearId String?
+  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id])
+
+  semester Int?
+
+  sectionId String?
+  section   Section? @relation(fields: [sectionId], references: [id])
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  batch  String?
+  status StudentStatus @default(ACTIVE)
+
+  attendanceRecords AttendanceRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([academicYearId, sectionId])
+  @@index([departmentId])
+  @@index([status])
+}
+
+model AttendanceSession {
+  id          String        @id @default(uuid())
+  status      SessionStatus @default(CREATED)
+  date        DateTime      @db.Date
+  sessionTime String?
+  semester    Int?
+  topic       String?
+  labIncharge String?
+  labInchargeEmployeeId String?
+
+  facultyId String
+  faculty   Faculty @relation(fields: [facultyId], references: [id])
+
+  roomId String?
+  room   Room?   @relation(fields: [roomId], references: [id])
+
+  academicYearId String?
+  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id])
+
+  sectionId String?
+  section   Section? @relation(fields: [sectionId], references: [id])
+
+  subjectId String?
+  subject   Subject? @relation(fields: [subjectId], references: [id])
+
+  records AttendanceRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@index([facultyId])
+  @@index([academicYearId, sectionId])
+}
+
+model AttendanceRecord {
+  id String @id @default(uuid())
+
+  sessionId String
+  session   AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  studentRollNumber String
+  student           Student @relation(fields: [studentRollNumber], references: [rollNumber], onDelete: Cascade)
+
+  timestamp DateTime @default(now())
+
+  // Prevents duplicate scans for the same student in the same session
+  @@unique([sessionId, studentRollNumber])
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+model TimetableEntry {
+  id String @id @default(uuid())
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  semester Int
+
+  sectionId String
+  section   Section @relation(fields: [sectionId], references: [id])
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  facultyId String
+  faculty   Faculty @relation(fields: [facultyId], references: [id])
+
+  roomId String?
+  room   Room?   @relation(fields: [roomId], references: [id])
+
+  dayOfWeek DayOfWeek
+  period    String // e.g., "1", "2", "Lab-Afternoon"
+  startTime String? // e.g., "09:00"
+  endTime   String? // e.g., "10:00"
+
+  isLab Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([academicYearId, departmentId, semester, sectionId])
+  @@index([facultyId, dayOfWeek])
+}
+
+model SuperAdmin {
+  id                String    @id @default(uuid())
+  employeeId        String    @unique
+  employeeName      String
+  passwordHash      String
+  role              Role      @default(SUPER_ADMIN)
+  isActive          Boolean   @default(true)
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model GeneratedWorkbook {
+  id             String    @id @default(uuid())
+  name           String
+  academicYearId String?
+  topic          String?
+  filePath       String
+  generatedBy    String?   
+  createdAt      DateTime  @default(now())
+
+  @@index([academicYearId])
+  @@index([createdAt])
+}
+

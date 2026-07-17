@@ -1,0 +1,5 @@
+name,email,password,role
+Dr. Ramesh Kumar,ramesh.kumar@institution.edu,Faculty@123,FACULTY
+Dr. Priya Sharma,priya.sharma@institution.edu,Faculty@123,FACULTY
+Prof. Ankit Verma,ankit.verma@institution.edu,Faculty@123,FACULTY
+Admin User,admin@institution.edu,Admin@123,SUPER_ADMIN

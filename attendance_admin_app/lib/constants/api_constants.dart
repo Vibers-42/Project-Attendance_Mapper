@@ -7,7 +7,7 @@ class ApiConstants {
 
     // Use the PC's actual local Wi-Fi IP address so physical mobile phones can connect
     // IMPORTANT: The mobile phone MUST be on the same Wi-Fi network as the PC!
-    return 'http://10.50.79.178:3000/api/v1';
+    return 'http://192.168.1.10:3000/api/v1';
   }
 
   // Auth Endpoints

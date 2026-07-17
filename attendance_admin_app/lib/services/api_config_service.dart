@@ -16,18 +16,8 @@ class ApiConfigService {
   String get baseUrl => _baseUrl;
 
   Future<void> init() async {
-    const fromEnv = String.fromEnvironment('BASE_URL');
-    if (fromEnv.isNotEmpty) {
-      _baseUrl = _normalize(fromEnv);
-      return;
-    }
-
-    final saved = _prefs.getString(_storageKey);
-    if (saved != null && saved.isNotEmpty) {
-      _baseUrl = _normalize(saved);
-      return;
-    }
-
+    // Force the default IP address to ignore any previously cached SharedPreferences 
+    // that might be stuck on 10.0.2.2
     _baseUrl = _defaultForPlatform();
   }
 
@@ -42,7 +32,7 @@ class ApiConfigService {
     }
     if (Platform.isAndroid) {
       // Use the PC's actual local Wi-Fi IP address so physical mobile phones can connect
-      return 'http://10.50.79.178:3000/api/v1';
+      return 'http://192.168.1.10:3000/api/v1';
     }
     if (Platform.isIOS) {
       return 'http://127.0.0.1:3000/api/v1';

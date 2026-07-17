@@ -41,8 +41,8 @@ class ApiConfigService {
       return 'http://localhost:3000/api/v1';
     }
     if (Platform.isAndroid) {
-      // 10.0.2.2 reaches the host machine from the Android emulator.
-      return 'http://10.0.2.2:3000/api/v1';
+      // Use the PC's actual local Wi-Fi IP address so physical mobile phones can connect
+      return 'http://10.50.79.178:3000/api/v1';
     }
     if (Platform.isIOS) {
       return 'http://127.0.0.1:3000/api/v1';

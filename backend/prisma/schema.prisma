@@ -3,9 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -116,7 +115,7 @@ model Student {
 model AttendanceSession {
   id          String        @id @default(uuid())
   status      SessionStatus @default(CREATED)
-  date        DateTime      @db.Date
+  date        DateTime
   sessionTime String?
   semester    Int?
   topic       String?

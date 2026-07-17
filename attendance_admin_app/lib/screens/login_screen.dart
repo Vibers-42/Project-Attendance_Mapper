@@ -44,9 +44,12 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     }
-    // On success, do NOT navigate manually.
-    // AuthProvider.isAuthenticated becomes true → AuthWrapper rebuilds → navigates to RecoveryWrapper.
-    // This ensures session recovery always runs after login.
+    // Explicitly navigate to the RecoveryWrapper after a successful login.
+    // This is required because if the user logged out, they were pushed to the /login route directly,
+    // which bypasses the AuthWrapper's automatic widget swapping.
+    if (success && mounted) {
+      Navigator.of(context).pushReplacementNamed('/recovery');
+    }
   }
 
   @override

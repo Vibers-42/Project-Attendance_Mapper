@@ -88,8 +88,8 @@ class _FacultyAccountScreenState extends State<FacultyAccountScreen> {
               Navigator.of(context).pop();
               Provider.of<AuthProvider>(context, listen: false).logout();
               
-              // Explicitly navigate to login and clear the entire stack
-              Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+              // Explicitly navigate to root and clear the entire stack
+              Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
             },
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Log Out'),

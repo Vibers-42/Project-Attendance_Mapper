@@ -118,7 +118,6 @@ model AttendanceSession {
   status      SessionStatus @default(CREATED)
   date        DateTime      @db.Date
   sessionTime String?
-<<<<<<< HEAD
   semester    Int?
   topic       String?
   labIncharge String?

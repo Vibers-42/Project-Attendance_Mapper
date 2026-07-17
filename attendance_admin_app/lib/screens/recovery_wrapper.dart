@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../providers/attendance_provider.dart';
 import '../services/session_recovery_service.dart';
 import 'faculty_workspace_screen.dart';
-import 'scanner_screen.dart';
 
 class RecoveryWrapper extends StatefulWidget {
   const RecoveryWrapper({super.key});

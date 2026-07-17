@@ -51,6 +51,9 @@ class _ScannerTabState extends State<ScannerTab> {
   
   bool _hasPermission = false;
   bool _isCheckingPermission = true;
+  bool _isProcessingScan = false;
+  DateTime? _lastProcessedAt;
+  static const Duration _scanCooldown = Duration(milliseconds: 750);
 
   @override
   void initState() {
@@ -79,26 +82,41 @@ class _ScannerTabState extends State<ScannerTab> {
     super.dispose();
   }
 
-  Future<void> _processRollNumber(String rollNumber) async {
-    if (rollNumber.isEmpty) return;
-    
-    final provider = Provider.of<AttendanceProvider>(context, listen: false);
-    
-    final errorMsg = provider.addStudent(rollNumber);
-    
-    if (errorMsg != null) {
-      _showSnackbar(errorMsg, isError: true);
-    } else {
-      _showSnackbar('✓ Attendance Recorded: ${provider.lastScanned}', isError: false);
-      try {
-        bool? hasVibrator = await Vibration.hasVibrator();
-        if (hasVibrator == true) {
-          Vibration.vibrate(duration: 150);
-        }
-      } catch (e) {
-        // Ignore vibration errors on unsupported devices/emulators
-      }
+  void _processRollNumber(String rollNumber) {
+    if (rollNumber.isEmpty || _isProcessingScan) return;
+
+    final now = DateTime.now();
+    if (_lastProcessedAt != null &&
+        now.difference(_lastProcessedAt!) < _scanCooldown) {
+      return;
     }
+
+    _isProcessingScan = true;
+    try {
+      final provider = Provider.of<AttendanceProvider>(context, listen: false);
+      final errorMsg = provider.addStudent(rollNumber);
+
+      if (errorMsg != null) {
+        _showSnackbar(errorMsg, isError: true);
+      } else {
+        _lastProcessedAt = now;
+        _showSnackbar(
+          '✓ Attendance Recorded: ${provider.lastScanned}',
+          isError: false,
+        );
+        _triggerVibration();
+      }
+    } finally {
+      _isProcessingScan = false;
+    }
+  }
+
+  void _triggerVibration() {
+    Vibration.hasVibrator().then((hasVibrator) {
+      if (hasVibrator == true) {
+        Vibration.vibrate(duration: 150);
+      }
+    }).catchError((_) {});
   }
 
   void _onManualSubmit() {
@@ -336,37 +354,36 @@ class _LiveAttendanceTabState extends State<LiveAttendanceTab> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final provider = Provider.of<AttendanceProvider>(context);
-    
-    // Filter list based on search query
-    final students = provider.scannedStudents.where((roll) {
-      return roll.contains(_searchQuery.toUpperCase());
-    }).toList();
 
     return Column(
       children: [
         // Present Count Header
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
-          color: Colors.grey.withAlpha(25),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Total Present',
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+        Selector<AttendanceProvider, int>(
+          selector: (_, provider) => provider.presentCount,
+          builder: (context, presentCount, _) {
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+              color: Colors.grey.withAlpha(25),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Total Present',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  Chip(
+                    label: Text(
+                      '$presentCount',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    backgroundColor: theme.colorScheme.primary,
+                    labelStyle: TextStyle(color: theme.colorScheme.onPrimary),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ],
               ),
-              Chip(
-                label: Text(
-                  '${provider.presentCount}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                backgroundColor: theme.colorScheme.primary,
-                labelStyle: TextStyle(color: theme.colorScheme.onPrimary),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-            ],
-          ),
+            );
+          },
         ),
         
         // Search Bar
@@ -395,40 +412,54 @@ class _LiveAttendanceTabState extends State<LiveAttendanceTab> {
 
         // Searchable ListView
         Expanded(
-          child: students.isEmpty
-              ? Center(
+          child: Selector<AttendanceProvider, List<String>>(
+            selector: (_, provider) => provider.scannedStudents,
+            builder: (context, scannedStudents, _) {
+              final students = scannedStudents.where((roll) {
+                return roll.contains(_searchQuery.toUpperCase());
+              }).toList();
+
+              if (students.isEmpty) {
+                return Center(
                   child: Text(
                     _searchQuery.isEmpty ? 'No Attendance Recorded Yet' : 'No results found',
                     style: const TextStyle(color: Colors.grey, fontSize: 16),
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                  itemCount: students.length,
-                  itemBuilder: (context, index) {
-                    final rollNumber = students[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8.0),
-                      elevation: 1,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: theme.colorScheme.secondaryContainer,
-                          child: Icon(Icons.person, color: theme.colorScheme.onSecondaryContainer),
-                        ),
-                        title: Text(
-                          rollNumber, 
-                          style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
-                          onPressed: () => provider.removeStudent(rollNumber),
-                          tooltip: 'Delete Attendance',
-                        ),
+                );
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                itemCount: students.length,
+                itemBuilder: (context, index) {
+                  final rollNumber = students[index];
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8.0),
+                    elevation: 1,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: theme.colorScheme.secondaryContainer,
+                        child: Icon(Icons.person, color: theme.colorScheme.onSecondaryContainer),
                       ),
-                    );
-                  },
-                ),
+                      title: Text(
+                        rollNumber,
+                        style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1),
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        onPressed: () {
+                          Provider.of<AttendanceProvider>(context, listen: false)
+                              .removeStudent(rollNumber);
+                        },
+                        tooltip: 'Delete Attendance',
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
 
         // Update Attendance Button

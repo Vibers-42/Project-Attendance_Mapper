@@ -8,6 +8,7 @@ class AttendanceHistoryProvider with ChangeNotifier {
 
   final List<AttendanceSessionModel> _sessions = [];
   final Map<String, List<AttendanceRecordModel>> _recordsCache = {};
+  final Map<String, Future<List<AttendanceRecordModel>>> _inFlightRecordFetches = {};
 
   bool _isLoadingSessions = false;
   bool _isLoadingRecords = false;
@@ -83,6 +84,21 @@ class AttendanceHistoryProvider with ChangeNotifier {
       return _recordsCache[sessionId]!;
     }
 
+    if (!forceRefresh && _inFlightRecordFetches.containsKey(sessionId)) {
+      return _inFlightRecordFetches[sessionId]!;
+    }
+
+    final fetchFuture = _fetchRecordsForSession(sessionId);
+    _inFlightRecordFetches[sessionId] = fetchFuture;
+
+    try {
+      return await fetchFuture;
+    } finally {
+      _inFlightRecordFetches.remove(sessionId);
+    }
+  }
+
+  Future<List<AttendanceRecordModel>> _fetchRecordsForSession(String sessionId) async {
     _isLoadingRecords = true;
     _errorMessage = null;
     notifyListeners();

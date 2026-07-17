@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ApiConstants {
   // Use flutter run --dart-define=BASE_URL=https://prod.example.com/api/v1 to override

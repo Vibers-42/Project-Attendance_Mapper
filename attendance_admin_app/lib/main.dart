@@ -31,6 +31,9 @@ import 'screens/session_details_screen.dart';
 import 'screens/faculty_account_screen.dart';
 import 'screens/recovery_wrapper.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+import 'services/api_config_service.dart';
+
 void main() async {
   // Capture UI Errors
   FlutterError.onError = (details) {
@@ -51,8 +54,12 @@ void main() async {
   await Hive.openBox('attendanceBox');
   
   // Dependency Injection Setup
+  final prefs = await SharedPreferences.getInstance();
+  final configService = ApiConfigService(prefs);
+  await configService.init();
+
   final secureStorageService = SecureStorageService();
-  final apiService = ApiService(secureStorageService);
+  final apiService = ApiService(secureStorageService, configService);
   
   final authRepository = AuthRepository(apiService, secureStorageService);
   final sessionRepository = SessionRepository(apiService);

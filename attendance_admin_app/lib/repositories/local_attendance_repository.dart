@@ -52,6 +52,20 @@ class LocalAttendanceRepository {
     _box.put('subject', subject);
     _box.put('sessionTime', sessionTime);
     _box.put('labIncharge', labIncharge);
+    _box.put('scannedStudents', <String>[]);
+    _box.delete('lastScanned');
+  }
+
+  void saveValidStudents(Map<String, String> validStudents) {
+    _box.put('validStudents', validStudents);
+  }
+
+  Map<String, String> loadValidStudents() {
+    final stored = _box.get('validStudents');
+    if (stored is Map) {
+      return stored.map((key, value) => MapEntry(key.toString(), value.toString()));
+    }
+    return {};
   }
 
   bool saveAttendanceLocally({

@@ -28,7 +28,6 @@ class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final authProvider = Provider.of<AuthProvider>(context);
-    final attendanceProvider = Provider.of<AttendanceProvider>(context);
     
     final faculty = authProvider.currentUser;
     final String welcomeName = faculty != null ? faculty.name : 'Faculty';
@@ -84,10 +83,20 @@ class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen> {
                   const SizedBox(height: 24),
                   
                   // 2. Active Session Card (Only shows if a session is currently running)
-                  if (attendanceProvider.hasActiveSession) ...[
-                    _ActiveSessionCard(provider: attendanceProvider),
-                    const SizedBox(height: 24),
-                  ],
+                  Selector<AttendanceProvider, bool>(
+                    selector: (_, provider) => provider.hasActiveSession,
+                    builder: (context, hasActiveSession, _) {
+                      if (!hasActiveSession) {
+                        return const SizedBox.shrink();
+                      }
+                      return Column(
+                        children: [
+                          const _ActiveSessionCard(),
+                          const SizedBox(height: 24),
+                        ],
+                      );
+                    },
+                  ),
 
                   // 3. Quick Actions
                   Text('Quick Actions', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
@@ -192,80 +201,95 @@ class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen> {
 }
 
 class _ActiveSessionCard extends StatelessWidget {
-  final AttendanceProvider provider;
-
-  const _ActiveSessionCard({required this.provider});
+  const _ActiveSessionCard();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [theme.colorScheme.primary, theme.colorScheme.tertiary],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: theme.colorScheme.primary.withValues(alpha: 0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+    return Selector<AttendanceProvider, ({String? subject, String? roomNumber, int presentCount})>(
+      selector: (_, provider) => (
+        subject: provider.subject,
+        roomNumber: provider.roomNumber,
+        presentCount: provider.presentCount,
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => Navigator.pushNamed(context, '/scanner'),
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+      builder: (context, sessionInfo, _) {
+        final theme = Theme.of(context);
+
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [theme.colorScheme.primary, theme.colorScheme.tertiary],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => Navigator.pushNamed(context, '/scanner'),
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text('ACTIVE SESSION', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'ACTIVE SESSION',
+                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        const Spacer(),
+                        const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+                      ],
                     ),
-                    const Spacer(),
-                    const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  provider.subject ?? 'Unknown Subject',
-                  style: theme.textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Room: ${provider.roomNumber ?? 'N/A'}',
-                  style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.9)),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Icon(Icons.people, color: Colors.white, size: 20),
-                    const SizedBox(width: 8),
+                    const SizedBox(height: 16),
                     Text(
-                      '${provider.presentCount} Students Scanned',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      sessionInfo.subject ?? 'Unknown Subject',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Room: ${sessionInfo.roomNumber ?? 'N/A'}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Icon(Icons.people, color: Colors.white, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${sessionInfo.presentCount} Students Scanned',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/faculty_model.dart';
 import '../repositories/auth_repository.dart';
+import '../utils/api_exception.dart';
 import '../utils/app_logger.dart';
 
 class AuthProvider extends ChangeNotifier {
@@ -29,41 +30,42 @@ class AuthProvider extends ChangeNotifier {
   Future<void> checkAuthStatus() async {
     _isCheckingAuth = true;
     notifyListeners();
+
+    FacultyModel? cachedUser;
     try {
-      // Token-first check: skip network call if there's nothing stored.
       final hasToken = await _authRepository.hasToken();
       if (!hasToken) {
         _currentUser = null;
         AppLogger.info('[AuthProvider] No stored token. Skipping /me request.');
-        _isCheckingAuth = false;
-        notifyListeners();
         return;
       }
 
-      // Restore user from local cache instantly for zero-latency boot
-      final cachedUser = await _authRepository.getCachedUser();
+      cachedUser = await _authRepository.getCachedUser();
       if (cachedUser != null) {
         _currentUser = cachedUser;
         _isCheckingAuth = false;
-        notifyListeners(); // Unblocks AuthWrapper instantly
+        notifyListeners();
         AppLogger.info('[AuthProvider] Restored user from cache instantly.');
       }
 
       AppLogger.info('[AuthProvider] Verifying session with backend in background...');
-      // Even if cached, we ping the backend to verify the token hasn't expired.
-      // If this fails, the API interceptor or the catch block will clear the session.
       final verifiedUser = await _authRepository.getMe();
-      
-      if (cachedUser == null) {
-        _currentUser = verifiedUser;
-        _isCheckingAuth = false;
-        notifyListeners();
-      }
+      _currentUser = verifiedUser;
     } catch (e) {
-      _currentUser = null;
+      final isUnauthorized = e is ApiException && e.statusCode == 401;
+      if (isUnauthorized) {
+        AppLogger.warning('[AuthProvider] Session expired. Logging out.');
+        await _authRepository.logout();
+        _currentUser = null;
+      } else if (cachedUser == null) {
+        _currentUser = null;
+        AppLogger.warning('[AuthProvider] Session check failed: $e');
+      } else {
+        AppLogger.warning('[AuthProvider] Background verify failed, keeping cached session: $e');
+      }
+    } finally {
       _isCheckingAuth = false;
       notifyListeners();
-      AppLogger.warning('[AuthProvider] Session check failed: $e');
     }
   }
 

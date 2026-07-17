@@ -60,10 +60,25 @@ class AttendanceProvider with ChangeNotifier {
     _sessionTime = data['sessionTime'];
     _labIncharge = data['labIncharge'];
     
-    _scannedStudents = data['scannedStudents'] ?? [];
+    _scannedStudents = List<String>.from(data['scannedStudents'] ?? []);
     _lastScanned = data['lastScanned'];
+    _validStudents = _localRepository.loadValidStudents();
 
     notifyListeners();
+    _refreshValidStudents();
+  }
+
+  Future<void> _refreshValidStudents() async {
+    try {
+      final students = await _sessionRepository.getValidStudents();
+      if (students.isNotEmpty) {
+        _validStudents = students;
+        _localRepository.saveValidStudents(students);
+        notifyListeners();
+      }
+    } catch (_) {
+      // Keep cached validation map when offline.
+    }
   }
 
   void _setLoading(bool value) {
@@ -92,6 +107,9 @@ class AttendanceProvider with ChangeNotifier {
 
       // Fetch the valid students for client-side validation
       _validStudents = await _sessionRepository.getValidStudents();
+      if (_validStudents.isNotEmpty) {
+        _localRepository.saveValidStudents(_validStudents);
+      }
 
       // 2. Initialize locally with the generated backend sessionId
       _sessionId = sessionModel.id;
@@ -102,6 +120,9 @@ class AttendanceProvider with ChangeNotifier {
       _subject = subject;
       _sessionTime = sessionTime;
       _labIncharge = labIncharge;
+
+      _scannedStudents.clear();
+      _lastScanned = null;
 
       _localRepository.startNewSession(
         sessionId: sessionModel.id,
@@ -210,6 +231,7 @@ class AttendanceProvider with ChangeNotifier {
       
       _scannedStudents.clear();
       _lastScanned = null;
+      _validStudents.clear();
       
       return true;
     } catch (e) {
@@ -223,6 +245,7 @@ class AttendanceProvider with ChangeNotifier {
 
   void discardSession() {
     _localRepository.clearAttendance();
+    _sessionId = null;
     _professorName = null;
     _year = null;
     _roomNumber = null;
@@ -230,6 +253,7 @@ class AttendanceProvider with ChangeNotifier {
     _subject = null;
     _sessionTime = null;
     _labIncharge = null;
+    _validStudents.clear();
     
     _scannedStudents.clear();
     _lastScanned = null;

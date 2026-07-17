@@ -15,18 +15,16 @@ class SessionDetailsScreen extends StatefulWidget {
 class _SessionDetailsScreenState extends State<SessionDetailsScreen> {
   bool _initialized = false;
   late AttendanceSessionModel _session;
+  late Future<List<AttendanceRecordModel>> _recordsFuture;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_initialized) {
       _session = ModalRoute.of(context)!.settings.arguments as AttendanceSessionModel;
-      
-      // Fetch records immediately
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Provider.of<AttendanceHistoryProvider>(context, listen: false)
-            .fetchRecordsForSession(_session.id);
-      });
+      // Capture the future once so rebuilds don't re-trigger network calls.
+      _recordsFuture = Provider.of<AttendanceHistoryProvider>(context, listen: false)
+          .fetchRecordsForSession(_session.id);
       _initialized = true;
     }
   }
@@ -43,17 +41,8 @@ class _SessionDetailsScreenState extends State<SessionDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final provider = Provider.of<AttendanceHistoryProvider>(context);
     final dateStr = DateFormat('dd MMM yyyy, hh:mm a').format(_session.date.toLocal());
-    
-    // Attempt to get records from cache directly since provider has them
-    // For a more robust approach we can use FutureBuilder, but Provider state is cleaner here
-    final isLoading = provider.isLoadingRecords;
-    
-    // We can't access private _recordsCache directly, but fetchRecordsForSession caches it.
-    // Let's rely on a FutureBuilder against the fetchRecordsForSession.
-    // Wait, since fetchRecordsForSession returns Future<List<Record>>, we can use FutureBuilder.
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Session Details'),
@@ -96,19 +85,16 @@ class _SessionDetailsScreenState extends State<SessionDetailsScreen> {
             // Records List Header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-              child: Row(
-                children: [
-                  Text('Scanned Records', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                  const Spacer(),
-                  if (isLoading) const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                ],
+              child: Text(
+                'Scanned Records',
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
             ),
             
             // Records List
             Expanded(
               child: FutureBuilder<List<AttendanceRecordModel>>(
-                future: provider.fetchRecordsForSession(_session.id), // Uses cache if available
+                future: _recordsFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());

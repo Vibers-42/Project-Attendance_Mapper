@@ -1,17 +1,18 @@
 import 'package:dio/dio.dart';
-import '../constants/api_constants.dart';
 import 'secure_storage_service.dart';
+import 'api_config_service.dart';
 
 class ApiService {
   late final Dio _dio;
   final SecureStorageService _storageService;
+  final ApiConfigService _configService;
 
-  ApiService(this._storageService) {
+  ApiService(this._storageService, this._configService) {
     _dio = Dio(
       BaseOptions(
-        baseUrl: ApiConstants.baseUrl,
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 15),
+        baseUrl: _configService.baseUrl,
+        connectTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 12),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -19,25 +20,57 @@ class ApiService {
       ),
     );
 
-    _dio.interceptors.add(_AuthInterceptor(_storageService));
+    _dio.interceptors.add(_AuthInterceptor(_storageService, _configService));
   }
 
-  Dio get client => _dio;
+  Dio get client {
+    _dio.options.baseUrl = _configService.baseUrl;
+    return _dio;
+  }
+
+  ApiConfigService get configService => _configService;
+
+  /// Returns true when the server responds (even with 401/404).
+  Future<bool> testConnection() async {
+    try {
+      await client.get(
+        '/students',
+        options: Options(
+          connectTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 }
 
 class _AuthInterceptor extends Interceptor {
   final SecureStorageService _storageService;
+  final ApiConfigService _configService;
 
-  _AuthInterceptor(this._storageService);
+  _AuthInterceptor(this._storageService, this._configService);
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
-    // Inject the JWT token if available
-    final token = await _storageService.getToken();
-    if (token != null && token.isNotEmpty) {
-      options.headers['Authorization'] = 'Bearer $token';
+    try {
+      final token = await _storageService.getToken();
+      if (token != null && token.isNotEmpty) {
+        options.headers['Authorization'] = 'Bearer $token';
+      }
+      handler.next(options);
+    } catch (error) {
+      handler.reject(
+        DioException(
+          requestOptions: options,
+          error: error,
+          type: DioExceptionType.unknown,
+        ),
+      );
     }
-    super.onRequest(options, handler);
   }
 
   @override

@@ -100,10 +100,14 @@ class AttendanceProvider with ChangeNotifier {
 
     try {
       // 1. Create session on the backend
-      final sessionModel = await _sessionRepository.createSession({
+      final sessionData = <String, dynamic>{
         'date': date.toIso8601String(),
-        'labIncharge': labIncharge,
-      });
+        if (labIncharge.isNotEmpty) 'labIncharge': labIncharge,
+        if (sessionTime != null && sessionTime.isNotEmpty) 'sessionTime': sessionTime,
+        if (subject != null && subject.isNotEmpty) 'subject': subject,
+        if (year != null && year.isNotEmpty) 'year': year,
+      };
+      final sessionModel = await _sessionRepository.createSession(sessionData);
 
       // Fetch the valid students for client-side validation
       _validStudents = await _sessionRepository.getValidStudents();
@@ -152,10 +156,26 @@ class AttendanceProvider with ChangeNotifier {
     return _scannedStudents.contains(normalized);
   }
 
+  // Returns a pattern locked to the session's selected academic year.
+  // Second Year  → 25B (regular) or 26B (lateral entry)
+  // Third Year   → 24B (regular) or 25B (lateral entry)
+  // No year set  → any of 24 / 25 / 26
+  // All patterns also enforce: Bachelor's (B), Engineering school (1), AI branch.
+  RegExp get _validRollPattern {
+    switch (_year) {
+      case 'Second Year':
+        return RegExp(r'^(25|26)B[1-7]1AI\d{3}$');
+      case 'Third Year':
+        return RegExp(r'^(24|25)B[1-7]1AI\d{3}$');
+      default:
+        return RegExp(r'^(24|25|26)B[1-7]1AI\d{3}$');
+    }
+  }
+
   /// Returns null on success, or an error message on failure
   String? addStudent(String rawInput) {
     String normalized = rawInput.trim().toUpperCase();
-    
+
     // Client-side validation against Master Data
     if (_validStudents.isNotEmpty) {
       if (!_validStudents.containsKey(normalized)) {
@@ -164,7 +184,18 @@ class AttendanceProvider with ChangeNotifier {
       // Map barcode to actual roll number
       normalized = _validStudents[normalized]!;
     }
-    
+
+    // Branch check first — must be AI branch
+    final branchPattern = RegExp(r'^(24|25|26)B[1-7]1AI\d{3}$');
+    if (!branchPattern.hasMatch(normalized)) {
+      return 'Student not registered.';
+    }
+
+    // Year-locked check — gives a specific message on year mismatch
+    if (!_validRollPattern.hasMatch(normalized)) {
+      return 'Student is not in $_year.';
+    }
+
     if (_scannedStudents.contains(normalized)) {
       return 'Attendance Already Recorded.';
     }

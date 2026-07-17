@@ -49,12 +49,13 @@ void main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Hive
+  // Initialize Hive and SharedPreferences in parallel
   await Hive.initFlutter();
-  await Hive.openBox('attendanceBox');
-  
-  // Dependency Injection Setup
-  final prefs = await SharedPreferences.getInstance();
+  final results = await Future.wait([
+    Hive.openBox('attendanceBox'),
+    SharedPreferences.getInstance(),
+  ]);
+  final prefs = results[1] as SharedPreferences;
   final configService = ApiConfigService(prefs);
   await configService.init();
 

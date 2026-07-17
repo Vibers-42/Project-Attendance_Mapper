@@ -59,6 +59,8 @@ class AttendanceHistoryProvider with ChangeNotifier {
         roomId: _activeFilters['roomId'] as String?,
         startDate: _activeFilters['startDate'] as String?,
         endDate: _activeFilters['endDate'] as String?,
+        year: _activeFilters['year'] as String?,
+        subject: _activeFilters['subject'] as String?,
       );
 
       _sessions.addAll(response.sessions);

@@ -7,13 +7,26 @@ class AttendanceService {
    * Minimal data required. Default state is CREATED.
    */
   async createSession(facultyId, data) {
+    const prisma = require('../config/prisma');
+
+    // Resolve text subject name → subjectId (if the Subject table has the exact name)
+    let subjectId;
+    if (data.subject) {
+      const found = await prisma.subject.findFirst({ where: { name: data.subject } });
+      subjectId = found?.id;
+    }
+
+    // Strip frontend-only text fields that have no direct DB column
+    const { subject, year, ...rest } = data;
+
     const sessionData = {
-      ...data,
+      ...rest,
       facultyId,
       status: 'CREATED',
       date: data.date ? new Date(data.date) : new Date(),
+      ...(subjectId && { subjectId }),
     };
-    
+
     return sessionRepository.create(sessionData);
   }
 
@@ -82,38 +95,44 @@ class AttendanceService {
     return sessionRepository.update(sessionId, { status: 'CANCELLED' });
   }
 
-  // Modules 11.2 will implement submitAttendance...
   async submitAttendance(sessionId, facultyId, studentRollNumbers) {
-    const session = await this.getSession(sessionId, facultyId);
-
-    if (session.status === 'COMPLETED' || session.status === 'CANCELLED') {
-      throw new ConflictError(`Cannot submit attendance to a ${session.status.toLowerCase()} session.`);
-    }
-
-    // Dedup roll numbers in-memory to reduce database overhead
     const uniqueRollNumbers = [...new Set(studentRollNumbers)];
+    if (uniqueRollNumbers.length === 0) return { count: 0 };
 
-    if (uniqueRollNumbers.length === 0) {
-      return { count: 0 };
-    }
-
-    const records = uniqueRollNumbers.map(rollNumber => ({
-      sessionId,
-      studentRollNumber: rollNumber,
-    }));
-
-    const recordRepository = require('../repositories/AttendanceRecordRepository');
+    const prisma = require('../config/prisma');
+    const { ValidationError } = require('../utils/AppError');
 
     try {
-      const result = await recordRepository.bulkCreate(records);
+      // Atomic: status check + record insert in one transaction — prevents
+      // a race condition where two concurrent submits both pass the status check.
+      const result = await prisma.$transaction(async (tx) => {
+        const current = await tx.attendanceSession.findUnique({
+          where: { id: sessionId },
+          select: { status: true, facultyId: true },
+        });
+
+        if (!current) throw new NotFoundError('Attendance session not found.');
+        if (current.facultyId !== facultyId) {
+          throw new ForbiddenError('You do not have permission to submit to this session.');
+        }
+        if (current.status === 'COMPLETED' || current.status === 'CANCELLED') {
+          throw new ConflictError(
+            `Cannot submit attendance to a ${current.status.toLowerCase()} session.`
+          );
+        }
+
+        return tx.attendanceRecord.createMany({
+          data: uniqueRollNumbers.map((r) => ({ sessionId, studentRollNumber: r })),
+          skipDuplicates: true,
+        });
+      });
+
       return { count: result.count };
     } catch (error) {
-      // P2003 is Prisma's error code for Foreign Key constraint failed.
-      // Since student master data is not yet imported, this will elegantly catch the failure
-      // without leaving dirty state.
       if (error.code === 'P2003') {
-        const { ValidationError } = require('../utils/AppError');
-        throw new ValidationError('One or more scanned students do not exist in the master database.');
+        throw new ValidationError(
+          'One or more scanned students do not exist in the master database.'
+        );
       }
       throw error;
     }

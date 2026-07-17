@@ -30,6 +30,27 @@ class AttendanceQueryService {
     if (queryParams.subjectId) where.subjectId = queryParams.subjectId;
     if (queryParams.academicYearId) where.academicYearId = queryParams.academicYearId;
     if (queryParams.sectionId) where.sectionId = queryParams.sectionId;
+    // Subject filter: matched via relation name (works when subjectId is stored on session)
+    if (queryParams.subject) where.subject = { name: queryParams.subject };
+
+    // Year filter: AcademicYear.name is "2024-2025" format, not "Second Year"/"Third Year".
+    // Match by roll number prefix instead: sessions that have records for that cohort.
+    if (queryParams.year === 'Second Year') {
+      where.records = {
+        some: {
+          OR: [
+            { studentRollNumber: { startsWith: '25B' } },
+            { studentRollNumber: { startsWith: '26B' } },
+          ],
+        },
+      };
+    } else if (queryParams.year === 'Third Year') {
+      where.records = {
+        some: {
+          studentRollNumber: { startsWith: '24B' },
+        },
+      };
+    }
 
     const { sessions, totalCount } = await sessionRepository.findAll({
       where,

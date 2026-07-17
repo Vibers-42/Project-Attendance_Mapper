@@ -19,10 +19,8 @@ class _ViewAttendanceScreenState extends State<ViewAttendanceScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final provider = Provider.of<AttendanceHistoryProvider>(context, listen: false);
-      if (provider.sessions.isEmpty) {
-        provider.fetchSessions(refresh: true);
-      }
+      Provider.of<AttendanceHistoryProvider>(context, listen: false)
+          .fetchSessions(refresh: true);
     });
   }
 
@@ -33,7 +31,8 @@ class _ViewAttendanceScreenState extends State<ViewAttendanceScreen> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
       final provider = Provider.of<AttendanceHistoryProvider>(context, listen: false);
       if (!provider.isLoadingSessions && provider.hasMore) {
         provider.fetchSessions();
@@ -45,7 +44,16 @@ class _ViewAttendanceScreenState extends State<ViewAttendanceScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      sheetAnimationStyle: AnimationStyle(
+        curve: Curves.easeOutCubic,
+        duration: const Duration(milliseconds: 340),
+        reverseCurve: Curves.easeInCubic,
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
       builder: (context) => const _FilterBottomSheet(),
     );
   }
@@ -54,13 +62,13 @@ class _ViewAttendanceScreenState extends State<ViewAttendanceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Attendance History'),
+        title: const Text('History'),
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_list),
+            icon: const Icon(Icons.filter_list_outlined),
             onPressed: _showFilterSheet,
-            tooltip: 'Filter Sessions',
+            tooltip: 'Filter',
           ),
         ],
       ),
@@ -81,7 +89,7 @@ class _ViewAttendanceScreenState extends State<ViewAttendanceScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.history_edu, size: 64, color: Colors.grey.shade400),
+                        Icon(Icons.history_edu, size: 64, color: Colors.grey.shade300),
                         const SizedBox(height: 16),
                         Text(
                           provider.errorMessage ?? 'No attendance sessions found.',
@@ -100,7 +108,7 @@ class _ViewAttendanceScreenState extends State<ViewAttendanceScreen> {
             child: ListView.builder(
               controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(12.0),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               itemCount: provider.sessions.length + (provider.hasMore ? 1 : 0),
               itemBuilder: (context, index) {
                 if (index == provider.sessions.length) {
@@ -109,9 +117,7 @@ class _ViewAttendanceScreenState extends State<ViewAttendanceScreen> {
                     child: Center(child: CircularProgressIndicator()),
                   );
                 }
-
-                final session = provider.sessions[index];
-                return _SessionCard(session: session);
+                return _SessionCard(session: provider.sessions[index]);
               },
             ),
           );
@@ -129,10 +135,13 @@ class _SessionCard extends StatelessWidget {
   Color _getStatusColor(String status) {
     switch (status) {
       case 'SUBMITTED':
+      case 'COMPLETED':
         return Colors.green;
       case 'PENDING':
+      case 'CREATED':
         return Colors.orange;
       case 'IN_PROGRESS':
+      case 'ACTIVE':
         return Colors.blue;
       default:
         return Colors.grey;
@@ -142,65 +151,88 @@ class _SessionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final dateStr = DateFormat('dd MMM yyyy, hh:mm a').format(session.date.toLocal());
-    
+    final dateStr = DateFormat('dd MMM yyyy').format(session.date.toLocal());
+    final timeStr = session.sessionTime ?? dateStr;
+    final statusColor = _getStatusColor(session.status);
+
     return Card(
-      margin: const EdgeInsets.only(bottom: 12.0),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.only(bottom: 10.0),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
       child: InkWell(
-        onTap: () {
-          Navigator.pushNamed(context, '/session_details', arguments: session);
-        },
-        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.pushNamed(context, '/session_details', arguments: session),
+        borderRadius: BorderRadius.circular(14),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
                     child: Text(
-                      'Room ${session.roomId ?? 'N/A'}',
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                      timeStr,
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                   ),
-                  Chip(
-                    label: Text(
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
                       session.status,
-                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    backgroundColor: _getStatusColor(session.status),
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Row(
                 children: [
-                  Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 8),
-                  Text(dateStr, style: TextStyle(color: Colors.grey.shade700)),
+                  Icon(Icons.calendar_today_outlined,
+                      size: 14, color: Colors.grey.shade500),
+                  const SizedBox(width: 6),
+                  Text(dateStr,
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                  if (session.labIncharge != null) ...[
+                    const SizedBox(width: 16),
+                    Icon(Icons.person_outline,
+                        size: 14, color: Colors.grey.shade500),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        session.labIncharge!,
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ],
               ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.person, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 8),
-                  Text(session.labIncharge ?? 'N/A', style: TextStyle(color: Colors.grey.shade700)),
-                ],
-              ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  Icon(Icons.people_outline,
+                      size: 16, color: theme.colorScheme.primary),
+                  const SizedBox(width: 6),
                   Text(
-                    '${session.attendanceCount} Students Present',
-                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: theme.colorScheme.primary),
+                    '${session.attendanceCount} students present',
+                    style: TextStyle(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                   ),
                 ],
               ),
@@ -212,6 +244,10 @@ class _SessionCard extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Filter bottom sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _FilterBottomSheet extends StatefulWidget {
   const _FilterBottomSheet();
 
@@ -220,102 +256,274 @@ class _FilterBottomSheet extends StatefulWidget {
 }
 
 class _FilterBottomSheetState extends State<_FilterBottomSheet> {
-  String? _selectedStatus;
-  final TextEditingController _roomController = TextEditingController();
+  String? _selectedYear;
+  String? _selectedSubject;
+  DateTime? _selectedDate;
+
+  static const List<String> _years = ['Second Year', 'Third Year'];
+  static const List<String> _subjects = [
+    'Employability Skills - Aptitude',
+    'Employability Skills - Soft Skills',
+  ];
 
   @override
   void initState() {
     super.initState();
     final provider = Provider.of<AttendanceHistoryProvider>(context, listen: false);
     final filters = provider.activeFilters;
-    _selectedStatus = filters['status'] as String?;
-    _roomController.text = filters['roomId'] as String? ?? '';
+    _selectedYear = filters['year'] as String?;
+    _selectedSubject = filters['subject'] as String?;
+    final dateStr = filters['startDate'] as String?;
+    if (dateStr != null) _selectedDate = DateTime.tryParse(dateStr);
   }
 
-  @override
-  void dispose() {
-    _roomController.dispose();
-    super.dispose();
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) setState(() => _selectedDate = picked);
   }
 
   void _applyFilters() {
     final provider = Provider.of<AttendanceHistoryProvider>(context, listen: false);
-    
     final Map<String, dynamic> filters = {};
-    if (_selectedStatus != null && _selectedStatus != 'ALL') {
-      filters['status'] = _selectedStatus;
+    if (_selectedYear != null) filters['year'] = _selectedYear;
+    if (_selectedSubject != null) filters['subject'] = _selectedSubject;
+    if (_selectedDate != null) {
+      final iso = _selectedDate!.toIso8601String().split('T').first;
+      filters['startDate'] = iso;
+      final next = _selectedDate!.add(const Duration(days: 1));
+      filters['endDate'] = next.toIso8601String().split('T').first;
     }
-    if (_roomController.text.trim().isNotEmpty) {
-      filters['roomId'] = _roomController.text.trim();
-    }
-    
     provider.applyFilters(filters);
     Navigator.of(context).pop();
   }
 
   void _clearFilters() {
-    final provider = Provider.of<AttendanceHistoryProvider>(context, listen: false);
-    provider.applyFilters({});
+    Provider.of<AttendanceHistoryProvider>(context, listen: false).applyFilters({});
     Navigator.of(context).pop();
+  }
+
+  InputDecoration _dec(String label, IconData icon) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: colorScheme.outlineVariant),
+    );
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, color: colorScheme.onSurfaceVariant),
+      border: border,
+      enabledBorder: border,
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+      ),
+      filled: true,
+      fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20, right: 20, top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.65,
+      minChildSize: 0.4,
+      maxChildSize: 0.92,
+      expand: false,
+      builder: (context, scrollController) => Column(
         children: [
-          const Text('Filter Sessions', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 24),
-          
-          DropdownButtonFormField<String>(
-            decoration: const InputDecoration(
-              labelText: 'Status',
-              border: OutlineInputBorder(),
-            ),
-            initialValue: _selectedStatus,
-            items: const [
-              DropdownMenuItem(value: 'ALL', child: Text('All Statuses')),
-              DropdownMenuItem(value: 'SUBMITTED', child: Text('Submitted')),
-              DropdownMenuItem(value: 'PENDING', child: Text('Pending')),
-            ],
-            onChanged: (val) => setState(() => _selectedStatus = val),
-          ),
-          const SizedBox(height: 16),
-          
-          TextField(
-            controller: _roomController,
-            decoration: const InputDecoration(
-              labelText: 'Room Number',
-              border: OutlineInputBorder(),
-              hintText: 'e.g., 301',
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 4),
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colorScheme.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
-          const SizedBox(height: 32),
-          
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _clearFilters,
-                  child: const Text('Clear Filters'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 8, 0),
+            child: Row(
+              children: [
+                Text(
+                  'Filter Sessions',
+                  style: theme.textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.bold),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: FilledButton(
-                  onPressed: _applyFilters,
-                  child: const Text('Apply'),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView(
+              controller: scrollController,
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
               ),
-            ],
+              children: [
+
+                // Academic Year
+                _FilterLabel('Academic Year'),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  decoration: _dec('Year', Icons.school_outlined),
+                  value: _selectedYear,
+                  isExpanded: true,
+                  borderRadius: BorderRadius.circular(16),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Any year')),
+                    ..._years.map((y) => DropdownMenuItem(
+                          value: y,
+                          child: Text(y, overflow: TextOverflow.ellipsis),
+                        )),
+                  ],
+                  onChanged: (val) => setState(() => _selectedYear = val),
+                ),
+                const SizedBox(height: 20),
+
+                // Subject
+                _FilterLabel('Subject'),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  decoration: _dec('Subject', Icons.menu_book_outlined),
+                  value: _selectedSubject,
+                  isExpanded: true,
+                  borderRadius: BorderRadius.circular(16),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Any subject')),
+                    ..._subjects.map((s) => DropdownMenuItem(
+                          value: s,
+                          child: Text(s, overflow: TextOverflow.ellipsis),
+                        )),
+                  ],
+                  onChanged: (val) => setState(() => _selectedSubject = val),
+                ),
+                const SizedBox(height: 20),
+
+                // Date
+                _FilterLabel('Date'),
+                const SizedBox(height: 10),
+                InkWell(
+                  onTap: _pickDate,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+                    decoration: BoxDecoration(
+                      color: _selectedDate != null
+                          ? colorScheme.primaryContainer.withValues(alpha: 0.35)
+                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _selectedDate != null
+                            ? colorScheme.primary.withValues(alpha: 0.4)
+                            : colorScheme.outlineVariant,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today_outlined,
+                          size: 20,
+                          color: _selectedDate != null
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _selectedDate != null
+                                ? DateFormat('dd MMM yyyy').format(_selectedDate!)
+                                : 'Pick a date',
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: _selectedDate != null
+                                  ? colorScheme.onSurface
+                                  : colorScheme.onSurface.withValues(alpha: 0.4),
+                            ),
+                          ),
+                        ),
+                        if (_selectedDate != null)
+                          GestureDetector(
+                            onTap: () => setState(() => _selectedDate = null),
+                            child: Icon(Icons.close_rounded,
+                                size: 18, color: colorScheme.onSurfaceVariant),
+                          )
+                        else
+                          Icon(Icons.chevron_right_rounded,
+                              size: 20, color: colorScheme.onSurfaceVariant),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _clearFilters,
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text('Clear All'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _applyFilters,
+                        style: FilledButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: const Text('Apply'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FilterLabel extends StatelessWidget {
+  final String text;
+  const _FilterLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 1.1,
+        color: colorScheme.primary,
       ),
     );
   }

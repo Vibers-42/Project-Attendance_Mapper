@@ -25,6 +25,8 @@ class AttendanceQueryRepository {
     String? roomId,
     String? startDate,
     String? endDate,
+    String? year,
+    String? subject,
   }) async {
     try {
       final Map<String, dynamic> queryParameters = {
@@ -36,6 +38,8 @@ class AttendanceQueryRepository {
       if (roomId != null && roomId.isNotEmpty) queryParameters['roomId'] = roomId;
       if (startDate != null && startDate.isNotEmpty) queryParameters['startDate'] = startDate;
       if (endDate != null && endDate.isNotEmpty) queryParameters['endDate'] = endDate;
+      if (year != null && year.isNotEmpty) queryParameters['year'] = year;
+      if (subject != null && subject.isNotEmpty) queryParameters['subject'] = subject;
 
       final response = await _apiService.client.get(
         ApiConstants.sessions,

@@ -59,7 +59,7 @@ class _ScannerTabState extends State<ScannerTab> {
   void initState() {
     super.initState();
     _scannerController = MobileScannerController(
-      detectionSpeed: DetectionSpeed.noDuplicates,
+      detectionSpeed: DetectionSpeed.normal,
       facing: CameraFacing.back,
     );
     _checkPermission();
@@ -92,6 +92,7 @@ class _ScannerTabState extends State<ScannerTab> {
     }
 
     _isProcessingScan = true;
+    _lastProcessedAt = now;
     try {
       final provider = Provider.of<AttendanceProvider>(context, listen: false);
       final errorMsg = provider.addStudent(rollNumber);
@@ -99,7 +100,6 @@ class _ScannerTabState extends State<ScannerTab> {
       if (errorMsg != null) {
         _showSnackbar(errorMsg, isError: true);
       } else {
-        _lastProcessedAt = now;
         _showSnackbar(
           '✓ Attendance Recorded: ${provider.lastScanned}',
           isError: false,

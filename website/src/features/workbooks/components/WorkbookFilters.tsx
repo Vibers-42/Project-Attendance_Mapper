@@ -61,7 +61,7 @@ export function WorkbookFilters() {
         {/* Topic Dropdown */}
         <div className="space-y-2 min-w-[200px]">
           <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Topic</label>
-          <Select value={topic} onValueChange={setTopic}>
+          <Select value={topic} onValueChange={(val) => setTopic(val || 'All')}>
             <SelectTrigger className="w-full bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800">
               <SelectValue placeholder="Select Topic" />
             </SelectTrigger>

@@ -466,25 +466,22 @@ export function WorkbookTable() {
 
                         {/* Actions */}
                         <td className="px-4 text-right">
-                          <div className="flex justify-end gap-1.5">
-                            <Button
-                              variant="outline" size="sm"
-                              className="h-7 gap-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 border-blue-200 dark:border-blue-800"
+                          <div className="flex justify-end gap-2.5">
+                            <button
                               onClick={() => handleDownload(workbook)}
                               disabled={isDownloading}
                               title="Download consolidated workbook"
+                              className="inline-flex items-center justify-center w-9 h-9 rounded-[12px] border-[1.5px] border-blue-200 dark:border-blue-900 text-blue-500 bg-white dark:bg-zinc-900 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors disabled:opacity-50"
                             >
-                              {isDownloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                              {!isDownloading && <span className="text-xs">Download</span>}
-                            </Button>
-                            <Button
-                              variant="outline" size="icon"
-                              className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-800"
+                              {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                            </button>
+                            <button
                               onClick={() => setDeleteWorkbookTarget(workbook)}
                               title="Delete all sessions in this class"
+                              className="inline-flex items-center justify-center w-9 h-9 rounded-[12px] border-[1.5px] border-zinc-200 dark:border-zinc-800 text-red-500 bg-white dark:bg-zinc-900 hover:bg-red-50 dark:hover:bg-red-900/20 hover:border-red-200 dark:hover:border-red-900 hover:text-red-600 transition-colors"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                              <Trash2 className="h-4 w-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>

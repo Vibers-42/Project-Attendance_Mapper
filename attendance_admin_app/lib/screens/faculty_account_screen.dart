@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/faculty_account_provider.dart';
+import '../services/api_config_service.dart';
 
 class FacultyAccountScreen extends StatefulWidget {
   const FacultyAccountScreen({super.key});
@@ -150,6 +151,7 @@ class _FacultyAccountScreenState extends State<FacultyAccountScreen> {
                   const SizedBox(height: 16),
                   Text(
                     faculty.name,
+                    textAlign: TextAlign.center,
                     style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
@@ -264,7 +266,14 @@ class _FacultyAccountScreenState extends State<FacultyAccountScreen> {
                   const SizedBox(height: 48),
                   const Divider(),
                   const SizedBox(height: 24),
-                  
+
+                  // Connection Settings
+                  const _ServerUrlSection(),
+
+                  const SizedBox(height: 32),
+                  const Divider(),
+                  const SizedBox(height: 24),
+
                   // Logout Button
                   OutlinedButton.icon(
                     onPressed: _onLogout,
@@ -281,6 +290,148 @@ class _FacultyAccountScreenState extends State<FacultyAccountScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ServerUrlSection extends StatefulWidget {
+  const _ServerUrlSection();
+
+  @override
+  State<_ServerUrlSection> createState() => _ServerUrlSectionState();
+}
+
+class _ServerUrlSectionState extends State<_ServerUrlSection> {
+  bool _editing = false;
+  late TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(
+      text: Provider.of<ApiConfigService>(context, listen: false).baseUrl,
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final url = _ctrl.text.trim();
+    if (url.isEmpty) return;
+    await Provider.of<ApiConfigService>(context, listen: false).setBaseUrl(url);
+    setState(() => _editing = false);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Server URL updated'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Consumer<ApiConfigService>(
+      builder: (_, config, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.dns_outlined, color: cs.primary),
+            const SizedBox(width: 8),
+            Text('Connection',
+                style: theme.textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+          ]),
+          const SizedBox(height: 14),
+          if (_editing) ...[
+            TextField(
+              controller: _ctrl,
+              decoration: const InputDecoration(
+                labelText: 'Backend URL',
+                hintText: 'https://your-app.onrender.com/api/v1',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.link),
+              ),
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+            ),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () {
+                    _ctrl.text = config.baseUrl;
+                    setState(() => _editing = false);
+                  },
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _save,
+                  child: const Text('Save'),
+                ),
+              ),
+            ]),
+          ] else
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: cs.outlineVariant),
+              ),
+              child: Row(children: [
+                Icon(Icons.link, size: 18, color: cs.onSurfaceVariant),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    config.baseUrl,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontFamily: 'monospace',
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: Icon(Icons.edit_outlined,
+                      size: 18, color: cs.primary),
+                  tooltip: 'Edit',
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.all(4),
+                  onPressed: () => setState(() => _editing = true),
+                ),
+                IconButton(
+                  icon: Icon(Icons.refresh,
+                      size: 18, color: cs.onSurfaceVariant),
+                  tooltip: 'Reset to default',
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.all(4),
+                  onPressed: () {
+                    Provider.of<ApiConfigService>(context, listen: false)
+                        .resetToDefault();
+                    _ctrl.text = config.baseUrl;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Reset to default URL')),
+                    );
+                  },
+                ),
+              ]),
+            ),
+        ],
       ),
     );
   }

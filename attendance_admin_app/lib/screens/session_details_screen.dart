@@ -13,6 +13,7 @@ class SessionDetailsScreen extends StatefulWidget {
 }
 
 class _SessionDetailsScreenState extends State<SessionDetailsScreen> {
+  static final _scanTimeFormat = DateFormat('hh:mm:ss a');
   bool _initialized = false;
   late AttendanceSessionModel _session;
   late Future<List<AttendanceRecordModel>> _recordsFuture;
@@ -111,10 +112,13 @@ class _SessionDetailsScreenState extends State<SessionDetailsScreen> {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  if (snapshot.hasError) {
+                  if (snapshot.hasError || (snapshot.data != null && snapshot.data!.isEmpty && Provider.of<AttendanceHistoryProvider>(context, listen: false).recordsErrorMessage != null)) {
+                    final msg = Provider.of<AttendanceHistoryProvider>(context, listen: false).recordsErrorMessage ?? 'Error loading records';
                     return Center(
-                      child: Text('Error loading records',
-                          style: TextStyle(color: cs.error)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(msg, style: TextStyle(color: cs.error), textAlign: TextAlign.center),
+                      ),
                     );
                   }
 
@@ -140,11 +144,12 @@ class _SessionDetailsScreenState extends State<SessionDetailsScreen> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16.0, vertical: 4.0),
                     itemCount: records.length,
-                    separatorBuilder: (_, __) =>
+                    cacheExtent: 500,
+                    separatorBuilder: (_, _) =>
                         const Divider(height: 1, indent: 60),
                     itemBuilder: (context, index) {
                       final record = records[index];
-                      final scanTime = DateFormat('hh:mm:ss a')
+                      final scanTime = _scanTimeFormat
                           .format(record.timestamp.toLocal());
 
                       return ListTile(
@@ -225,6 +230,18 @@ class _SessionDetailsScreenState extends State<SessionDetailsScreen> {
             ],
           ),
           const SizedBox(height: 16),
+          if (_session.subjectName != null) ...[
+            _Row(
+              Icons.menu_book_outlined,
+              'Subject',
+              _session.subjectName!.replaceFirst('Employability Skills - ', 'ES - '),
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (_session.academicYearName != null) ...[
+            _Row(Icons.school_outlined, 'Year', _session.academicYearName!),
+            const SizedBox(height: 10),
+          ],
           _Row(Icons.calendar_today_outlined, 'Date', dateStr),
           const SizedBox(height: 10),
           _Row(Icons.access_time_outlined, 'Session',

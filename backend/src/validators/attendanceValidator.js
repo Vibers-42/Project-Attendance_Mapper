@@ -6,8 +6,11 @@ const startSessionSchema = Joi.object({
   sectionId: Joi.string().uuid().optional(),
   roomId: Joi.string().uuid().optional(),
   sessionTime: Joi.string().optional(),
-  labIncharge: Joi.string().optional(),
+  labIncharge: Joi.string().allow('').optional(),
   date: Joi.date().iso().optional(),
+  // Text-based names from the mobile app — resolved to IDs in the service layer
+  year: Joi.string().optional(),
+  subject: Joi.string().optional(),
 });
 
 const submitAttendanceSchema = Joi.object({

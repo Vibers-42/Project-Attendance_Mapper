@@ -10,6 +10,9 @@ class AttendanceSessionModel {
   final String? sessionTime;
   final String? labIncharge;
   final int attendanceCount;
+  // Resolved names from backend relations (subject.name, academicYear.name)
+  final String? subjectName;
+  final String? academicYearName;
 
   AttendanceSessionModel({
     required this.id,
@@ -23,6 +26,8 @@ class AttendanceSessionModel {
     this.sessionTime,
     this.labIncharge,
     this.attendanceCount = 0,
+    this.subjectName,
+    this.academicYearName,
   });
 
   factory AttendanceSessionModel.fromJson(Map<String, dynamic> json) {
@@ -48,6 +53,8 @@ class AttendanceSessionModel {
       sessionTime: json['sessionTime'] as String?,
       labIncharge: json['labIncharge'] as String?,
       attendanceCount: attendanceCount,
+      subjectName: (json['subject'] as Map<String, dynamic>?)?['name'] as String?,
+      academicYearName: (json['academicYear'] as Map<String, dynamic>?)?['name'] as String?,
     );
   }
 

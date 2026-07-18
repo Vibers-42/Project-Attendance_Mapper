@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../models/attendance_session_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/attendance_provider.dart';
 import '../providers/attendance_history_provider.dart';
+import '../utils/app_route_observer.dart';
 
 class FacultyWorkspaceScreen extends StatefulWidget {
   const FacultyWorkspaceScreen({super.key});
@@ -13,21 +15,46 @@ class FacultyWorkspaceScreen extends StatefulWidget {
   State<FacultyWorkspaceScreen> createState() => _FacultyWorkspaceScreenState();
 }
 
-class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen> {
+class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen>
+    with RouteAware {
+  late final String _greeting;
+
   @override
   void initState() {
     super.initState();
+    final hour = DateTime.now().hour;
+    _greeting = hour < 12
+        ? 'Good Morning,'
+        : hour < 17
+            ? 'Good Afternoon,'
+            : 'Good Evening,';
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<AttendanceHistoryProvider>(context, listen: false)
-          .fetchSessions(refresh: true);
+      _loadRecentSessions();
     });
   }
 
-  String _greeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good Morning,';
-    if (hour < 17) return 'Good Afternoon,';
-    return 'Good Evening,';
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) appRouteObserver.subscribe(this, route);
+  }
+
+  @override
+  void dispose() {
+    appRouteObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  // Called when the workspace is revealed after a sub-route is popped (e.g. coming back from history)
+  @override
+  void didPopNext() {
+    _loadRecentSessions();
+  }
+
+  void _loadRecentSessions() {
+    Provider.of<AttendanceHistoryProvider>(context, listen: false)
+        .fetchRecentSessions();
   }
 
   @override
@@ -46,14 +73,13 @@ class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen> {
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            // ── Greeting header (in the scroll content, not in SliverAppBar) ──
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   // Greeting + name
                   Text(
-                    _greeting(),
+                    _greeting,
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: colorScheme.onSurface.withValues(alpha: 0.60),
                       fontWeight: FontWeight.w600,
@@ -76,7 +102,7 @@ class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen> {
                   ),
                   const SizedBox(height: 28),
 
-                  // Active session banner (only when a session is running)
+                  // Active session banner
                   Selector<AttendanceProvider, bool>(
                     selector: (_, p) => p.hasActiveSession,
                     builder: (context, hasActive, _) {
@@ -111,11 +137,11 @@ class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen> {
               ),
             ),
 
-            // ── Recent sessions list ──
+            // Recent sessions — uses the SEPARATE recentSessions list, never affected by filters
             Consumer<AttendanceHistoryProvider>(
               builder: (context, historyProvider, child) {
-                if (historyProvider.isLoadingSessions &&
-                    historyProvider.sessions.isEmpty) {
+                if (historyProvider.isLoadingRecent &&
+                    historyProvider.recentSessions.isEmpty) {
                   return const SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.all(40.0),
@@ -124,19 +150,17 @@ class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen> {
                   );
                 }
 
-                if (historyProvider.sessions.isEmpty) {
+                if (historyProvider.recentSessions.isEmpty) {
                   return SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 40),
                       child: Column(
                         children: [
                           Icon(Icons.history_edu,
-                              size: 52,
-                              color: Colors.grey.shade300),
+                              size: 52, color: Colors.grey.shade300),
                           const SizedBox(height: 12),
                           Text(
-                            historyProvider.errorMessage ??
-                                'No recent sessions found.',
+                            'No recent sessions found.',
                             style: TextStyle(color: Colors.grey.shade500),
                           ),
                         ],
@@ -145,16 +169,13 @@ class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen> {
                   );
                 }
 
-                final recentSessions =
-                    historyProvider.sessions.take(3).toList();
-
                 return SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 20.0),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, index) =>
-                          _RecentSessionTile(session: recentSessions[index]),
-                      childCount: recentSessions.length,
+                      (context, index) => _RecentSessionTile(
+                          session: historyProvider.recentSessions[index]),
+                      childCount: historyProvider.recentSessions.length,
                     ),
                   ),
                 );
@@ -168,6 +189,41 @@ class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen> {
     );
   }
 
+  void _handleNewSession(BuildContext context) {
+    final provider =
+        Provider.of<AttendanceProvider>(context, listen: false);
+    if (!provider.hasActiveSession) {
+      Navigator.pushNamed(context, '/create_session');
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Active Session Found'),
+        content: const Text(
+            'You already have a session in progress. Would you like to resume it or start a completely new one?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.pushNamed(context, '/scanner');
+            },
+            child: const Text('Resume'),
+          ),
+          FilledButton(
+            onPressed: () {
+              provider.discardSession();
+              Navigator.of(ctx).pop();
+              Navigator.pushNamed(context, '/create_session');
+            },
+            child: const Text('Start New'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildQuickActionsGrid(BuildContext context, ColorScheme cs) {
     return Row(
       children: [
@@ -177,7 +233,7 @@ class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen> {
             title: 'New Session',
             bgColor: cs.primaryContainer.withValues(alpha: 0.6),
             iconColor: cs.primary,
-            onTap: () => Navigator.pushNamed(context, '/create_session'),
+            onTap: () => _handleNewSession(context),
           ),
         ),
         const SizedBox(width: 14),
@@ -364,7 +420,7 @@ class _ActionCard extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _RecentSessionTile extends StatelessWidget {
-  final dynamic session;
+  final AttendanceSessionModel session;
 
   const _RecentSessionTile({required this.session});
 
@@ -387,56 +443,110 @@ class _RecentSessionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     final dateStr = DateFormat('dd MMM yyyy').format(session.date.toLocal());
-    // Use session time string if available — avoids the UTC→IST 5:30am display bug
-    final sessionTitle = session.sessionTime as String? ?? dateStr;
-    final color = _statusColor(session.status as String);
+    final color = _statusColor(session.status);
+
+    final subjectLabel = session.subjectName
+        ?.replaceFirst('Employability Skills - ', 'ES - ');
+    final yearLabel = session.academicYearName;
+    final timeLabel = session.sessionTime;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10.0),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: theme.colorScheme.outlineVariant),
+        side: BorderSide(color: cs.outlineVariant),
       ),
-      child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        onTap: () =>
-            Navigator.pushNamed(context, '/session_details', arguments: session),
-        leading: CircleAvatar(
-          backgroundColor: color.withValues(alpha: 0.12),
-          child: Icon(Icons.access_time_outlined, color: color, size: 20),
+      child: InkWell(
+        onTap: () => Navigator.pushNamed(context, '/session_details',
+            arguments: session),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              // Status dot
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: color.withValues(alpha: 0.12),
+                child: Icon(Icons.receipt_long_outlined, color: color, size: 18),
+              ),
+              const SizedBox(width: 12),
+              // Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      subjectLabel ?? timeLabel ?? dateStr,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 10,
+                      children: [
+                        if (yearLabel != null)
+                          _TileMeta(Icons.school_outlined, yearLabel),
+                        if (timeLabel != null)
+                          _TileMeta(Icons.access_time_outlined, timeLabel),
+                        _TileMeta(Icons.calendar_today_outlined, dateStr),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Count
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${session.attendanceCount}',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: cs.primary),
+                  ),
+                  Text(
+                    'students',
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: cs.onSurface.withValues(alpha: 0.5)),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        title: Text(
-          sessionTitle,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          dateStr,
+      ),
+    );
+  }
+}
+
+class _TileMeta extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _TileMeta(this.icon, this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 11, color: cs.onSurface.withValues(alpha: 0.4)),
+        const SizedBox(width: 3),
+        Text(
+          label,
           style: TextStyle(
-              fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+              fontSize: 11, color: cs.onSurface.withValues(alpha: 0.55)),
         ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              '${session.attendanceCount}',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: theme.colorScheme.primary),
-            ),
-            Text(
-              'students',
-              style: TextStyle(
-                  fontSize: 10,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }

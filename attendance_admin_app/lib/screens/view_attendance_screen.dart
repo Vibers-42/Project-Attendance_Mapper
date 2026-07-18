@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -13,20 +15,49 @@ class ViewAttendanceScreen extends StatefulWidget {
 
 class _ViewAttendanceScreenState extends State<ViewAttendanceScreen> {
   final ScrollController _scrollController = ScrollController();
+  late final StreamSubscription<List<ConnectivityResult>> _connectivitySub;
+  bool _wasOffline = false;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<AttendanceHistoryProvider>(context, listen: false)
-          .fetchSessions(refresh: true);
+      final provider =
+          Provider.of<AttendanceHistoryProvider>(context, listen: false);
+      if (provider.sessions.isEmpty) {
+        provider.fetchSessions(refresh: true);
+      } else {
+        // Data already in memory — refresh silently without a spinner
+        provider.silentRefresh();
+      }
+    });
+
+    // Auto-refresh when internet is restored after being offline
+    _connectivitySub = Connectivity()
+        .onConnectivityChanged
+        .listen((results) {
+      final isOnline = results
+          .any((r) => r != ConnectivityResult.none);
+      if (!isOnline) {
+        _wasOffline = true;
+      } else if (_wasOffline && isOnline) {
+        _wasOffline = false;
+        if (!mounted) return;
+        final provider = Provider.of<AttendanceHistoryProvider>(
+            context,
+            listen: false);
+        if (provider.errorMessage != null) {
+          provider.fetchSessions(refresh: true);
+        }
+      }
     });
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _connectivitySub.cancel();
     super.dispose();
   }
 
@@ -65,10 +96,26 @@ class _ViewAttendanceScreenState extends State<ViewAttendanceScreen> {
         title: const Text('History'),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list_outlined),
-            onPressed: _showFilterSheet,
-            tooltip: 'Filter',
+          Consumer<AttendanceHistoryProvider>(
+            builder: (context, provider, _) {
+              final af = provider.activeFilters;
+              final count = [
+                if (af.containsKey('year')) 1,
+                if (af.containsKey('subject')) 1,
+                if (af.containsKey('startDate')) 1,
+              ].length;
+              return Badge(
+                isLabelVisible: count > 0,
+                label: Text('$count'),
+                child: IconButton(
+                  icon: Icon(count > 0
+                      ? Icons.filter_list
+                      : Icons.filter_list_outlined),
+                  onPressed: _showFilterSheet,
+                  tooltip: 'Filter',
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -79,6 +126,7 @@ class _ViewAttendanceScreenState extends State<ViewAttendanceScreen> {
           }
 
           if (provider.sessions.isEmpty) {
+            final hasError = provider.errorMessage != null;
             return RefreshIndicator(
               onRefresh: () => provider.fetchSessions(refresh: true),
               child: SingleChildScrollView(
@@ -86,16 +134,37 @@ class _ViewAttendanceScreenState extends State<ViewAttendanceScreen> {
                 child: SizedBox(
                   height: MediaQuery.of(context).size.height - 200,
                   child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.history_edu, size: 64, color: Colors.grey.shade300),
-                        const SizedBox(height: 16),
-                        Text(
-                          provider.errorMessage ?? 'No attendance sessions found.',
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
-                        ),
-                      ],
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            hasError
+                                ? Icons.wifi_off_rounded
+                                : Icons.history_edu,
+                            size: 64,
+                            color: Colors.grey.shade300,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            hasError
+                                ? provider.errorMessage!
+                                : 'No attendance sessions found.',
+                            style: TextStyle(
+                                color: Colors.grey.shade600, fontSize: 15),
+                            textAlign: TextAlign.center,
+                          ),
+                          if (hasError) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              'Will retry when connection is restored.',
+                              style: TextStyle(
+                                  color: Colors.grey.shade400, fontSize: 13),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -108,6 +177,7 @@ class _ViewAttendanceScreenState extends State<ViewAttendanceScreen> {
             child: ListView.builder(
               controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
+              cacheExtent: 800,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               itemCount: provider.sessions.length + (provider.hasMore ? 1 : 0),
               itemBuilder: (context, index) {
@@ -151,16 +221,22 @@ class _SessionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     final dateStr = DateFormat('dd MMM yyyy').format(session.date.toLocal());
-    final timeStr = session.sessionTime ?? dateStr;
     final statusColor = _getStatusColor(session.status);
+
+    // Short subject label: strip "Employability Skills - " prefix
+    final subjectLabel = session.subjectName
+        ?.replaceFirst('Employability Skills - ', 'ES - ');
+    final yearLabel = session.academicYearName;
+    final timeLabel = session.sessionTime;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10.0),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: theme.colorScheme.outlineVariant),
+        side: BorderSide(color: cs.outlineVariant),
       ),
       child: InkWell(
         onTap: () => Navigator.pushNamed(context, '/session_details', arguments: session),
@@ -170,15 +246,17 @@ class _SessionCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ── Title row: subject + status ───────────────────────────
               Row(
                 children: [
                   Expanded(
                     child: Text(
-                      timeStr,
+                      subjectLabel ?? timeLabel ?? dateStr,
                       style: theme.textTheme.titleMedium
                           ?.copyWith(fontWeight: FontWeight.bold),
                     ),
                   ),
+                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
@@ -197,39 +275,34 @@ class _SessionCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              Row(
+
+              // ── Meta row: year · time · date ──────────────────────────
+              Wrap(
+                spacing: 12,
+                runSpacing: 4,
                 children: [
-                  Icon(Icons.calendar_today_outlined,
-                      size: 14, color: Colors.grey.shade500),
-                  const SizedBox(width: 6),
-                  Text(dateStr,
-                      style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                  if (session.labIncharge != null) ...[
-                    const SizedBox(width: 16),
-                    Icon(Icons.person_outline,
-                        size: 14, color: Colors.grey.shade500),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        session.labIncharge!,
-                        style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+                  if (yearLabel != null)
+                    _MetaChip(
+                        icon: Icons.school_outlined, label: yearLabel),
+                  if (timeLabel != null)
+                    _MetaChip(
+                        icon: Icons.access_time_outlined, label: timeLabel),
+                  _MetaChip(
+                      icon: Icons.calendar_today_outlined, label: dateStr),
                 ],
               ),
               const SizedBox(height: 10),
+
+              // ── Footer: student count ────────────────────────────────
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Icon(Icons.people_outline,
-                      size: 16, color: theme.colorScheme.primary),
+                  Icon(Icons.people_outline, size: 16, color: cs.primary),
                   const SizedBox(width: 6),
                   Text(
                     '${session.attendanceCount} students present',
                     style: TextStyle(
-                      color: theme.colorScheme.primary,
+                      color: cs.primary,
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                     ),
@@ -240,6 +313,28 @@ class _SessionCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _MetaChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: cs.onSurface.withValues(alpha: 0.45)),
+        const SizedBox(width: 4),
+        Text(label,
+            style: TextStyle(
+                fontSize: 12,
+                color: cs.onSurface.withValues(alpha: 0.6))),
+      ],
     );
   }
 }
@@ -256,6 +351,9 @@ class _FilterBottomSheet extends StatefulWidget {
 }
 
 class _FilterBottomSheetState extends State<_FilterBottomSheet> {
+  // Which criteria are toggled on — any combination allowed
+  final Set<String> _active = {};
+
   String? _selectedYear;
   String? _selectedSubject;
   DateTime? _selectedDate;
@@ -269,12 +367,34 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   @override
   void initState() {
     super.initState();
-    final provider = Provider.of<AttendanceHistoryProvider>(context, listen: false);
-    final filters = provider.activeFilters;
+    final filters =
+        Provider.of<AttendanceHistoryProvider>(context, listen: false)
+            .activeFilters;
     _selectedYear = filters['year'] as String?;
     _selectedSubject = filters['subject'] as String?;
     final dateStr = filters['startDate'] as String?;
     if (dateStr != null) _selectedDate = DateTime.tryParse(dateStr);
+
+    // Restore which toggles were on from active filters
+    if (_selectedYear != null) _active.add('year');
+    if (_selectedSubject != null) _active.add('subject');
+    if (_selectedDate != null) _active.add('date');
+    // Default: show year toggle open if nothing is active
+    if (_active.isEmpty) _active.add('year');
+  }
+
+  void _toggleMode(String mode) {
+    setState(() {
+      if (_active.contains(mode)) {
+        _active.remove(mode);
+        // Clear value when toggled off
+        if (mode == 'year') _selectedYear = null;
+        if (mode == 'subject') _selectedSubject = null;
+        if (mode == 'date') _selectedDate = null;
+      } else {
+        _active.add(mode);
+      }
+    });
   }
 
   Future<void> _pickDate() async {
@@ -288,42 +408,44 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   }
 
   void _applyFilters() {
-    final provider = Provider.of<AttendanceHistoryProvider>(context, listen: false);
+    final provider =
+        Provider.of<AttendanceHistoryProvider>(context, listen: false);
     final Map<String, dynamic> filters = {};
     if (_selectedYear != null) filters['year'] = _selectedYear;
     if (_selectedSubject != null) filters['subject'] = _selectedSubject;
     if (_selectedDate != null) {
       final iso = _selectedDate!.toIso8601String().split('T').first;
       filters['startDate'] = iso;
-      final next = _selectedDate!.add(const Duration(days: 1));
-      filters['endDate'] = next.toIso8601String().split('T').first;
+      filters['endDate'] =
+          _selectedDate!.add(const Duration(days: 1)).toIso8601String().split('T').first;
     }
     provider.applyFilters(filters);
     Navigator.of(context).pop();
   }
 
   void _clearFilters() {
-    Provider.of<AttendanceHistoryProvider>(context, listen: false).applyFilters({});
+    Provider.of<AttendanceHistoryProvider>(context, listen: false)
+        .applyFilters({});
     Navigator.of(context).pop();
   }
 
   InputDecoration _dec(String label, IconData icon) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(color: colorScheme.outlineVariant),
+      borderSide: BorderSide(color: cs.outlineVariant),
     );
     return InputDecoration(
       labelText: label,
-      prefixIcon: Icon(icon, color: colorScheme.onSurfaceVariant),
+      prefixIcon: Icon(icon, color: cs.onSurfaceVariant),
       border: border,
       enabledBorder: border,
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+        borderSide: BorderSide(color: cs.primary, width: 1.5),
       ),
       filled: true,
-      fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+      fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.45),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     );
   }
@@ -331,35 +453,34 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final cs = theme.colorScheme;
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.65,
-      minChildSize: 0.4,
+      initialChildSize: 0.5,
+      minChildSize: 0.35,
       maxChildSize: 0.92,
       expand: false,
       builder: (context, scrollController) => Column(
         children: [
+          // Handle bar
           Padding(
             padding: const EdgeInsets.only(top: 12, bottom: 4),
             child: Container(
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: colorScheme.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2)),
             ),
           ),
+          // Title row
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 8, 0),
             child: Row(
               children: [
-                Text(
-                  'Filter Sessions',
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.bold),
-                ),
+                Text('Filter Sessions',
+                    style: theme.textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.bold)),
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.close),
@@ -369,6 +490,61 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
             ),
           ),
           const Divider(height: 1),
+
+          // ── Active filter summary strip ───────────────────────────────
+          Builder(builder: (context) {
+            final chips = <Widget>[];
+            if (_selectedYear != null) {
+              chips.add(_ActiveChip(
+                label: _selectedYear!,
+                onRemove: () => setState(() {
+                  _selectedYear = null;
+                  _active.remove('year');
+                }),
+              ));
+            }
+            if (_selectedSubject != null) {
+              chips.add(_ActiveChip(
+                label: _selectedSubject!.replaceFirst(
+                    'Employability Skills - ', ''),
+                onRemove: () => setState(() {
+                  _selectedSubject = null;
+                  _active.remove('subject');
+                }),
+              ));
+            }
+            if (_selectedDate != null) {
+              chips.add(_ActiveChip(
+                label: DateFormat('dd MMM yyyy').format(_selectedDate!),
+                onRemove: () => setState(() {
+                  _selectedDate = null;
+                  _active.remove('date');
+                }),
+              ));
+            }
+
+            if (chips.isEmpty) return const SizedBox.shrink();
+            return Container(
+              width: double.infinity,
+              color: cs.primaryContainer.withValues(alpha: 0.25),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text('Applied:',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: cs.primary)),
+                  ...chips,
+                ],
+              ),
+            );
+          }),
+
           Expanded(
             child: ListView(
               controller: scrollController,
@@ -379,101 +555,133 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                 bottom: MediaQuery.of(context).viewInsets.bottom + 24,
               ),
               children: [
-
-                // Academic Year
-                _FilterLabel('Academic Year'),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  decoration: _dec('Year', Icons.school_outlined),
-                  value: _selectedYear,
-                  isExpanded: true,
-                  borderRadius: BorderRadius.circular(16),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('Any year')),
-                    ..._years.map((y) => DropdownMenuItem(
-                          value: y,
-                          child: Text(y, overflow: TextOverflow.ellipsis),
-                        )),
-                  ],
-                  onChanged: (val) => setState(() => _selectedYear = val),
-                ),
-                const SizedBox(height: 20),
-
-                // Subject
-                _FilterLabel('Subject'),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  decoration: _dec('Subject', Icons.menu_book_outlined),
-                  value: _selectedSubject,
-                  isExpanded: true,
-                  borderRadius: BorderRadius.circular(16),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('Any subject')),
-                    ..._subjects.map((s) => DropdownMenuItem(
-                          value: s,
-                          child: Text(s, overflow: TextOverflow.ellipsis),
-                        )),
-                  ],
-                  onChanged: (val) => setState(() => _selectedSubject = val),
-                ),
-                const SizedBox(height: 20),
-
-                // Date
-                _FilterLabel('Date'),
-                const SizedBox(height: 10),
-                InkWell(
-                  onTap: _pickDate,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-                    decoration: BoxDecoration(
-                      color: _selectedDate != null
-                          ? colorScheme.primaryContainer.withValues(alpha: 0.35)
-                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _selectedDate != null
-                            ? colorScheme.primary.withValues(alpha: 0.4)
-                            : colorScheme.outlineVariant,
-                      ),
+                // ── Filter toggles ────────────────────────────────────────
+                Text('Filter by',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.1,
+                        color: cs.primary)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _ModeChip(
+                      label: 'Year',
+                      icon: Icons.school_outlined,
+                      selected: _active.contains('year'),
+                      onTap: () => _toggleMode('year'),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_today_outlined,
-                          size: 20,
+                    const SizedBox(width: 8),
+                    _ModeChip(
+                      label: 'Subject',
+                      icon: Icons.menu_book_outlined,
+                      selected: _active.contains('subject'),
+                      onTap: () => _toggleMode('subject'),
+                    ),
+                    const SizedBox(width: 8),
+                    _ModeChip(
+                      label: 'Date',
+                      icon: Icons.calendar_today_outlined,
+                      selected: _active.contains('date'),
+                      onTap: () => _toggleMode('date'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // ── Year input ───────────────────────────────────────────
+                if (_active.contains('year')) ...[
+                  DropdownButtonFormField<String>(
+                    decoration: _dec('Academic Year', Icons.school_outlined),
+                    value: _selectedYear,
+                    isExpanded: true,
+                    borderRadius: BorderRadius.circular(16),
+                    items: _years
+                        .map((y) => DropdownMenuItem(
+                            value: y,
+                            child: Text(y, overflow: TextOverflow.ellipsis)))
+                        .toList(),
+                    onChanged: (v) => setState(() => _selectedYear = v),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // ── Subject input ─────────────────────────────────────────
+                if (_active.contains('subject')) ...[
+                  DropdownButtonFormField<String>(
+                    decoration: _dec('Subject', Icons.menu_book_outlined),
+                    value: _selectedSubject,
+                    isExpanded: true,
+                    borderRadius: BorderRadius.circular(16),
+                    items: _subjects
+                        .map((s) => DropdownMenuItem(
+                            value: s,
+                            child: Text(s, overflow: TextOverflow.ellipsis)))
+                        .toList(),
+                    onChanged: (v) => setState(() => _selectedSubject = v),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // ── Date input ────────────────────────────────────────────
+                if (_active.contains('date')) ...[
+                  InkWell(
+                    onTap: _pickDate,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 15),
+                      decoration: BoxDecoration(
+                        color: _selectedDate != null
+                            ? cs.primaryContainer.withValues(alpha: 0.35)
+                            : cs.surfaceContainerHighest.withValues(alpha: 0.45),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
                           color: _selectedDate != null
-                              ? colorScheme.primary
-                              : colorScheme.onSurfaceVariant,
+                              ? cs.primary.withValues(alpha: 0.4)
+                              : cs.outlineVariant,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            _selectedDate != null
-                                ? DateFormat('dd MMM yyyy').format(_selectedDate!)
-                                : 'Pick a date',
-                            style: theme.textTheme.bodyLarge?.copyWith(
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_today_outlined,
+                              size: 20,
                               color: _selectedDate != null
-                                  ? colorScheme.onSurface
-                                  : colorScheme.onSurface.withValues(alpha: 0.4),
+                                  ? cs.primary
+                                  : cs.onSurfaceVariant),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _selectedDate != null
+                                  ? DateFormat('dd MMM yyyy')
+                                      .format(_selectedDate!)
+                                  : 'Pick a date',
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: _selectedDate != null
+                                    ? cs.onSurface
+                                    : cs.onSurface.withValues(alpha: 0.4),
+                              ),
                             ),
                           ),
-                        ),
-                        if (_selectedDate != null)
-                          GestureDetector(
-                            onTap: () => setState(() => _selectedDate = null),
-                            child: Icon(Icons.close_rounded,
-                                size: 18, color: colorScheme.onSurfaceVariant),
-                          )
-                        else
-                          Icon(Icons.chevron_right_rounded,
-                              size: 20, color: colorScheme.onSurfaceVariant),
-                      ],
+                          if (_selectedDate != null)
+                            GestureDetector(
+                              onTap: () => setState(() => _selectedDate = null),
+                              child: Icon(Icons.close_rounded,
+                                  size: 18, color: cs.onSurfaceVariant),
+                            )
+                          else
+                            Icon(Icons.chevron_right_rounded,
+                                size: 20, color: cs.onSurfaceVariant),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 32),
+                  const SizedBox(height: 16),
+                ],
 
+                const SizedBox(height: 16),
+
+                // ── Action buttons ────────────────────────────────────────
                 Row(
                   children: [
                     Expanded(
@@ -484,11 +692,12 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                               borderRadius: BorderRadius.circular(12)),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        child: const Text('Clear All'),
+                        child: const Text('Clear'),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
+                      flex: 2,
                       child: FilledButton(
                         onPressed: _applyFilters,
                         style: FilledButton.styleFrom(
@@ -496,7 +705,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                               borderRadius: BorderRadius.circular(12)),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        child: const Text('Apply'),
+                        child: const Text('Apply Filter'),
                       ),
                     ),
                   ],
@@ -510,20 +719,94 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   }
 }
 
-class _FilterLabel extends StatelessWidget {
-  final String text;
-  const _FilterLabel(this.text);
+class _ActiveChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onRemove;
+
+  const _ActiveChip({required this.label, required this.onRemove});
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Text(
-      text.toUpperCase(),
-      style: TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.bold,
-        letterSpacing: 1.1,
-        color: colorScheme.primary,
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onPrimaryContainer)),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onRemove,
+            child: Icon(Icons.close_rounded,
+                size: 14, color: cs.onPrimaryContainer),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModeChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ModeChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? cs.primaryContainer
+                : cs.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? cs.primary : cs.outlineVariant,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon,
+                  size: 20,
+                  color: selected ? cs.primary : cs.onSurfaceVariant),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight:
+                      selected ? FontWeight.bold : FontWeight.normal,
+                  color: selected ? cs.primary : cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

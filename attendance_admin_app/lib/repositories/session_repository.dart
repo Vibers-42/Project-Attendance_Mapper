@@ -54,11 +54,34 @@ class SessionRepository {
     }
   }
 
+  Future<AttendanceSessionModel> updateSession(
+      String sessionId, Map<String, dynamic> data) async {
+    try {
+      final response = await _apiService.client.patch(
+        '${ApiConstants.sessions}/$sessionId',
+        data: data,
+      );
+      final authResponse = AuthResponseModel.fromJson(response.data);
+      if (authResponse.success && authResponse.data != null) {
+        final sessionJson =
+            authResponse.data!['session'] as Map<String, dynamic>;
+        return AttendanceSessionModel.fromJson(sessionJson);
+      } else {
+        throw ApiException(authResponse.message);
+      }
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString());
+    }
+  }
+
   Future<Map<String, String>> getValidStudents() async {
     try {
       final response = await _apiService.client.get(
         ApiConstants.students,
-        queryParameters: {'limit': 1000},
+        queryParameters: {'limit': 500},
       );
 
       final authResponse = AuthResponseModel.fromJson(response.data);

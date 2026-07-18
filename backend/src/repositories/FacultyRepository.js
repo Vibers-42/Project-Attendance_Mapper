@@ -8,7 +8,7 @@ class FacultyRepository {
   async findByFacultyId(facultyId) {
     return prisma.faculty.findUnique({ where: { facultyId } });
   }
-  
+
   async update(id, data) {
     return prisma.faculty.update({ where: { id }, data });
   }

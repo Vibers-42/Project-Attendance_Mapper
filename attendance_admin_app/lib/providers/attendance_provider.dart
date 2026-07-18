@@ -148,6 +148,64 @@ class AttendanceProvider with ChangeNotifier {
     }
   }
 
+  /// Updates year/subject/sessionTime/labIncharge on the active session.
+  /// Clears scanned students when year changes (old rolls fail new year validation).
+  Future<bool> updateSessionDetails({
+    String? year,
+    String? subject,
+    String? sessionTime,
+    String? labIncharge,
+  }) async {
+    if (_sessionId == null) return false;
+    _setLoading(true);
+    _errorMessage = null;
+
+    try {
+      final data = <String, dynamic>{
+        if (year != null && year.isNotEmpty) 'year': year,
+        if (subject != null && subject.isNotEmpty) 'subject': subject,
+        if (sessionTime != null && sessionTime.isNotEmpty)
+          'sessionTime': sessionTime,
+        if (labIncharge != null && labIncharge.isNotEmpty) 'labIncharge': labIncharge,
+      };
+
+      await _sessionRepository.updateSession(_sessionId!, data);
+
+      final yearChanged = year != null && year != _year;
+      _year = year ?? _year;
+      _subject = subject ?? _subject;
+      _sessionTime = sessionTime ?? _sessionTime;
+      if (labIncharge != null && labIncharge.isNotEmpty) {
+        _labIncharge = labIncharge;
+      }
+
+      // Clear scans that no longer pass the new year's roll pattern
+      if (yearChanged) {
+        _scannedStudents.clear();
+        _lastScanned = null;
+        _localRepository.clearAttendance();
+      }
+
+      _localRepository.startNewSession(
+        sessionId: _sessionId!,
+        professorName: _professorName ?? '',
+        year: _year,
+        roomNumber: _roomNumber ?? '',
+        date: _date ?? DateTime.now(),
+        subject: _subject,
+        sessionTime: _sessionTime,
+        labIncharge: _labIncharge ?? '',
+      );
+
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   bool hasScanned(String rollNumber) {
     String normalized = rollNumber.trim().toUpperCase();
     if (_validStudents.isNotEmpty && _validStudents.containsKey(normalized)) {
@@ -157,18 +215,18 @@ class AttendanceProvider with ChangeNotifier {
   }
 
   // Returns a pattern locked to the session's selected academic year.
-  // Second Year  → 25B (regular) or 26B (lateral entry)
-  // Third Year   → 24B (regular) or 25B (lateral entry)
-  // No year set  → any of 24 / 25 / 26
-  // All patterns also enforce: Bachelor's (B), Engineering school (1), AI branch.
+  // B1 = regular (entered that year), B[2-7] = lateral entry (one year ahead).
+  // Second Year  → 25B1 (2025 regular) or 26B[2-7] (2026 lateral entry)
+  // Third Year   → 24B1 (2024 regular) or 25B[2-7] (2025 lateral entry)
+  // No year set  → any 2nd/3rd year AI roll
   RegExp get _validRollPattern {
     switch (_year) {
       case 'Second Year':
-        return RegExp(r'^(25|26)B[1-7]1AI\d{3}$');
+        return RegExp(r'^(25B1|26B[2-7])1AI\d{3}$');
       case 'Third Year':
-        return RegExp(r'^(24|25)B[1-7]1AI\d{3}$');
+        return RegExp(r'^(24B1|25B[2-7])1AI\d{3}$');
       default:
-        return RegExp(r'^(24|25|26)B[1-7]1AI\d{3}$');
+        return RegExp(r'^(24B1|25B[1-7]|26B[2-7])1AI\d{3}$');
     }
   }
 
@@ -176,14 +234,14 @@ class AttendanceProvider with ChangeNotifier {
   String? addStudent(String rawInput) {
     String normalized = rawInput.trim().toUpperCase();
 
-    // Client-side validation against Master Data
-    if (_validStudents.isNotEmpty) {
-      if (!_validStudents.containsKey(normalized)) {
-        return 'Student not registered in Master Data.';
-      }
-      // Map barcode to actual roll number
-      normalized = _validStudents[normalized]!;
+    // Client-side validation against Master Data (always required)
+    if (_validStudents.isEmpty) {
+      return 'Student data not loaded. Please check connection.';
     }
+    if (!_validStudents.containsKey(normalized)) {
+      return 'Student not registered.';
+    }
+    normalized = _validStudents[normalized]!;
 
     // Branch check first — must be AI branch
     final branchPattern = RegExp(r'^(24|25|26)B[1-7]1AI\d{3}$');

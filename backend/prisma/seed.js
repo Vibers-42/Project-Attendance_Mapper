@@ -6,6 +6,35 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starting database seed...');
 
+  // ==========================================
+  // ACADEMIC YEARS
+  // ==========================================
+  const academicYears = ['Second Year', 'Third Year'];
+  for (const name of academicYears) {
+    await prisma.academicYear.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+  }
+  console.log('✅ Seeded AcademicYear records.');
+
+  // ==========================================
+  // SUBJECTS
+  // ==========================================
+  const subjects = [
+    { name: 'Employability Skills - Aptitude', code: 'ES-APT' },
+    { name: 'Employability Skills - Soft Skills', code: 'ES-SS' },
+  ];
+  for (const s of subjects) {
+    await prisma.subject.upsert({
+      where: { name: s.name },
+      update: {},
+      create: s,
+    });
+  }
+  console.log('✅ Seeded Subject records.');
+
   const password = await hashPassword('webcap');
 
   const demoAccounts = [];

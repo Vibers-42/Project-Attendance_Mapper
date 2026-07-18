@@ -8,26 +8,322 @@ import '../providers/attendance_provider.dart';
 class ScannerScreen extends StatelessWidget {
   const ScannerScreen({super.key});
 
+  // Returns: 'back' → keep session, just navigate away
+  //          'end'  → discard session entirely
+  //          null   → stay
+  Future<String?> _confirmBack(BuildContext context) {
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Leave Scanner?'),
+        content: const Text(
+            'The session stays active — you can return to it later.'),
+        actionsAlignment: MainAxisAlignment.spaceBetween,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('end'),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('End Session'),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(null),
+                child: const Text('Stay'),
+              ),
+              const SizedBox(width: 4),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop('back'),
+                child: const Text('Go Back'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleBack(BuildContext context) async {
+    final result = await _confirmBack(context);
+    if (!context.mounted) return;
+    if (result == 'end') {
+      Provider.of<AttendanceProvider>(context, listen: false).discardSession();
+      Navigator.of(context).pop();
+    } else if (result == 'back') {
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _showEditSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      sheetAnimationStyle: AnimationStyle(
+        curve: Curves.easeOutCubic,
+        duration: const Duration(milliseconds: 300),
+        reverseCurve: Curves.easeInCubic,
+        reverseDuration: const Duration(milliseconds: 220),
+      ),
+      builder: (_) => ChangeNotifierProvider.value(
+        value: Provider.of<AttendanceProvider>(context, listen: false),
+        child: const _EditSessionSheet(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Attendance System'),
-          centerTitle: true,
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'SCANNER', icon: Icon(Icons.qr_code_scanner)),
-              Tab(text: 'LIVE ATTENDANCE', icon: Icon(Icons.people_alt)),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        await _handleBack(context);
+      },
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Attendance System'),
+            centerTitle: true,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => _handleBack(context),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.edit_note_outlined),
+                tooltip: 'Edit session details',
+                onPressed: () => _showEditSheet(context),
+              ),
+            ],
+            bottom: const TabBar(
+              tabs: [
+                Tab(text: 'SCANNER', icon: Icon(Icons.qr_code_scanner)),
+                Tab(text: 'LIVE ATTENDANCE', icon: Icon(Icons.people_alt)),
+              ],
+            ),
+          ),
+          body: const TabBarView(
+            physics: NeverScrollableScrollPhysics(),
+            children: [
+              ScannerTab(),
+              LiveAttendanceTab(),
             ],
           ),
         ),
-        body: const TabBarView(
-          physics: NeverScrollableScrollPhysics(), // Prevents swipe interference with scanner
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Quick-edit sheet (accessible from scanner AppBar)
+// ──────────────────────────────────────────────────────────────────────────────
+class _EditSessionSheet extends StatefulWidget {
+  const _EditSessionSheet();
+
+  @override
+  State<_EditSessionSheet> createState() => _EditSessionSheetState();
+}
+
+class _EditSessionSheetState extends State<_EditSessionSheet> {
+  static const List<String> _years = ['Second Year', 'Third Year'];
+  static const List<String> _subjects = [
+    'Employability Skills - Aptitude',
+    'Employability Skills - Soft Skills',
+  ];
+  static const List<String> _sessionTimes = [
+    '9:30 AM - 12:00 PM',
+    '1:50 PM - 4:20 PM',
+  ];
+
+  late String? _year;
+  late String? _subject;
+  late String? _sessionTime;
+  late TextEditingController _traineeCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = Provider.of<AttendanceProvider>(context, listen: false);
+    _year = p.year;
+    _subject = p.subject;
+    _sessionTime = p.sessionTime;
+    _traineeCtrl = TextEditingController(text: p.labIncharge ?? '');
+  }
+
+  @override
+  void dispose() {
+    _traineeCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final provider = Provider.of<AttendanceProvider>(context, listen: false);
+    final yearChanged = _year != provider.year;
+
+    if (yearChanged && provider.presentCount > 0) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Clear Scanned Students?'),
+          content: Text(
+              'You have ${provider.presentCount} student(s) scanned. '
+              'Changing the year will clear them because they belong to a different year. Continue?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Yes, Change Year')),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    }
+
+    final success = await provider.updateSessionDetails(
+      year: _year,
+      subject: _subject,
+      sessionTime: _sessionTime,
+      labIncharge: _traineeCtrl.text.trim(),
+    );
+
+    if (!mounted) return;
+    Navigator.of(context).pop();
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(success
+          ? 'Session updated${yearChanged ? ' — previous scans cleared' : ''}'
+          : provider.errorMessage ?? 'Update failed'),
+      backgroundColor: success ? Colors.green.shade700 : Colors.red.shade700,
+    ));
+  }
+
+  InputDecoration _dec(String label, IconData icon) {
+    final cs = Theme.of(context).colorScheme;
+    final border = OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: cs.outlineVariant));
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, color: cs.onSurfaceVariant),
+      border: border,
+      enabledBorder: border,
+      focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: cs.primary, width: 1.5)),
+      filled: true,
+      fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Padding(
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            ScannerTab(),
-            LiveAttendanceTab(),
+            // Handle
+            Center(
+              child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                      color: cs.outlineVariant,
+                      borderRadius: BorderRadius.circular(2))),
+            ),
+            Text('Edit Session Details',
+                style: theme.textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+
+            DropdownButtonFormField<String>(
+              decoration: _dec('Academic Year', Icons.school_outlined),
+              value: _year,
+              isExpanded: true,
+              borderRadius: BorderRadius.circular(16),
+              items: _years
+                  .map((y) => DropdownMenuItem(
+                      value: y,
+                      child: Text(y, overflow: TextOverflow.ellipsis)))
+                  .toList(),
+              onChanged: (v) => setState(() => _year = v),
+            ),
+            const SizedBox(height: 14),
+
+            DropdownButtonFormField<String>(
+              decoration: _dec('Subject', Icons.menu_book_outlined),
+              value: _subject,
+              isExpanded: true,
+              borderRadius: BorderRadius.circular(16),
+              items: _subjects
+                  .map((s) => DropdownMenuItem(
+                      value: s,
+                      child: Text(s, overflow: TextOverflow.ellipsis)))
+                  .toList(),
+              onChanged: (v) => setState(() => _subject = v),
+            ),
+            const SizedBox(height: 14),
+
+            DropdownButtonFormField<String>(
+              decoration:
+                  _dec('Session Time', Icons.access_time_outlined),
+              value: _sessionTime,
+              isExpanded: true,
+              borderRadius: BorderRadius.circular(16),
+              items: _sessionTimes
+                  .map((t) => DropdownMenuItem(
+                      value: t,
+                      child: Text(t, overflow: TextOverflow.ellipsis)))
+                  .toList(),
+              onChanged: (v) => setState(() => _sessionTime = v),
+            ),
+            const SizedBox(height: 14),
+
+            TextField(
+              controller: _traineeCtrl,
+              decoration:
+                  _dec('Trainee Name (optional)', Icons.person_outline),
+              textInputAction: TextInputAction.done,
+            ),
+            const SizedBox(height: 24),
+
+            Consumer<AttendanceProvider>(
+              builder: (_, provider, _) => FilledButton.icon(
+                onPressed:
+                    provider.isLoading ? null : _save,
+                icon: provider.isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.save_outlined),
+                label: Text(
+                    provider.isLoading ? 'Saving...' : 'Save Changes'),
+                style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12))),
+              ),
+            ),
           ],
         ),
       ),
@@ -45,7 +341,10 @@ class ScannerTab extends StatefulWidget {
   State<ScannerTab> createState() => _ScannerTabState();
 }
 
-class _ScannerTabState extends State<ScannerTab> {
+class _ScannerTabState extends State<ScannerTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   late final MobileScannerController _scannerController;
   final TextEditingController _manualEntryController = TextEditingController();
   
@@ -143,6 +442,7 @@ class _ScannerTabState extends State<ScannerTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // required by AutomaticKeepAliveClientMixin
     final theme = Theme.of(context);
 
     if (_isCheckingPermission) {
@@ -184,17 +484,19 @@ class _ScannerTabState extends State<ScannerTab> {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                MobileScanner(
-                  controller: _scannerController,
-                  onDetect: (capture) {
-                    final List<Barcode> barcodes = capture.barcodes;
-                    if (barcodes.isNotEmpty) {
-                      final String? code = barcodes.first.rawValue;
-                      if (code != null) {
-                        _processRollNumber(code.trim().toUpperCase());
+                RepaintBoundary(
+                  child: MobileScanner(
+                    controller: _scannerController,
+                    onDetect: (capture) {
+                      final List<Barcode> barcodes = capture.barcodes;
+                      if (barcodes.isNotEmpty) {
+                        final String? code = barcodes.first.rawValue;
+                        if (code != null) {
+                          _processRollNumber(code.trim().toUpperCase());
+                        }
                       }
-                    }
-                  },
+                    },
+                  ),
                 ),
                 // Targeting box overlay
                 Container(
@@ -218,33 +520,76 @@ class _ScannerTabState extends State<ScannerTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Consumer<AttendanceProvider>(
-                  builder: (context, provider, child) {
+                Selector<AttendanceProvider,
+                    ({String? lastScanned, int presentCount})>(
+                  selector: (_, p) => (
+                    lastScanned: p.lastScanned,
+                    presentCount: p.presentCount,
+                  ),
+                  builder: (context, data, _) {
                     return Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Last Scanned', style: theme.textTheme.labelLarge?.copyWith(color: Colors.grey)),
+                            Text('Last Scanned',
+                                style: theme.textTheme.labelLarge
+                                    ?.copyWith(color: Colors.grey)),
                             const SizedBox(height: 4),
                             Text(
-                              provider.lastScanned ?? 'None',
+                              data.lastScanned ?? 'None',
                               style: theme.textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.bold,
-                                color: provider.lastScanned != null ? theme.colorScheme.primary : Colors.grey,
+                                color: data.lastScanned != null
+                                    ? theme.colorScheme.primary
+                                    : Colors.grey,
                                 letterSpacing: 1,
                               ),
                             ),
+                            if (data.lastScanned != null) ...[
+                              const SizedBox(height: 6),
+                              GestureDetector(
+                                onTap: () {
+                                  final provider =
+                                      Provider.of<AttendanceProvider>(
+                                          context,
+                                          listen: false);
+                                  final removed = provider.lastScanned!;
+                                  provider.removeStudent(removed);
+                                  _showSnackbar('Removed: $removed',
+                                      isError: false);
+                                },
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.undo_rounded,
+                                        size: 14,
+                                        color: Colors.orange.shade700),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Undo last scan',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.orange.shade700,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text('Present Count', style: theme.textTheme.labelLarge?.copyWith(color: Colors.grey)),
+                            Text('Present Count',
+                                style: theme.textTheme.labelLarge
+                                    ?.copyWith(color: Colors.grey)),
                             const SizedBox(height: 4),
                             Text(
-                              '${provider.presentCount}',
+                              '${data.presentCount}',
                               style: theme.textTheme.headlineMedium?.copyWith(
                                 fontWeight: FontWeight.bold,
                                 color: theme.colorScheme.primary,
@@ -254,7 +599,7 @@ class _ScannerTabState extends State<ScannerTab> {
                         ),
                       ],
                     );
-                  }
+                  },
                 ),
                 const SizedBox(height: 24),
                 const Divider(),
@@ -295,6 +640,30 @@ class _ScannerTabState extends State<ScannerTab> {
   }
 }
 
+class _SummaryRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  const _SummaryRow(this.icon, this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: cs.onSurface.withValues(alpha: 0.5)),
+        const SizedBox(width: 8),
+        Text('$label: ', style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6), fontSize: 13)),
+        Expanded(
+          child: Text(value,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              overflow: TextOverflow.ellipsis),
+        ),
+      ],
+    );
+  }
+}
+
 // ==========================================
 // TAB 2: LIVE ATTENDANCE
 // ==========================================
@@ -317,7 +686,41 @@ class _LiveAttendanceTabState extends State<LiveAttendanceTab> {
 
   void _onUpdateAttendance() async {
     final provider = Provider.of<AttendanceProvider>(context, listen: false);
-    
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final subject = (provider.subject ?? 'N/A')
+            .replaceFirst('Employability Skills - ', 'ES - ');
+        return AlertDialog(
+          title: const Text('Confirm Submission'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _SummaryRow(Icons.menu_book_outlined, 'Subject', subject),
+              const SizedBox(height: 8),
+              _SummaryRow(Icons.school_outlined, 'Year', provider.year ?? 'N/A'),
+              const SizedBox(height: 8),
+              _SummaryRow(Icons.access_time_outlined, 'Session', provider.sessionTime ?? 'N/A'),
+              const SizedBox(height: 8),
+              _SummaryRow(Icons.people_outline, 'Students', '${provider.presentCount} present'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Submit'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
     final success = await provider.submitAttendance();
     
     if (!mounted) return;
@@ -336,7 +739,8 @@ class _LiveAttendanceTabState extends State<LiveAttendanceTab> {
           duration: Duration(seconds: 3),
         ),
       );
-      Navigator.of(context).pop(); // Go back to details screen
+      // Pop back to workspace (root), clearing the session details stack
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

@@ -28,31 +28,12 @@ class ApiService {
     return _dio;
   }
 
-  ApiConfigService get configService => _configService;
-
-  /// Returns true when the server responds (even with 401/404).
-  Future<bool> testConnection() async {
-    try {
-      await client.get(
-        '/students',
-        options: Options(
-          connectTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 5),
-          validateStatus: (status) => status != null && status < 500,
-        ),
-      );
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
 }
 
 class _AuthInterceptor extends Interceptor {
   final SecureStorageService _storageService;
-  final ApiConfigService _configService;
 
-  _AuthInterceptor(this._storageService, this._configService);
+  _AuthInterceptor(this._storageService, ApiConfigService _);
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
@@ -75,10 +56,7 @@ class _AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    // Handle 401 Unauthorized globally (session expired or invalid token)
     if (err.response?.statusCode == 401) {
-      // In a more complex setup, you'd trigger a logout event stream here
-      // For now, the provider handles specific 401s, but clearing token is safe
       _storageService.deleteToken();
     }
     super.onError(err, handler);

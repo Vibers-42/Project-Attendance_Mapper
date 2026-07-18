@@ -73,7 +73,7 @@ export function FacultyUploadModal({ isOpen, onClose }: FacultyUploadModalProps)
     },
     onSuccess: (data) => {
       toast.success(data.message || 'Faculty uploaded successfully!');
-      queryClient.invalidateQueries({ queryKey: ['faculty'] });
+      queryClient.removeQueries({ queryKey: ['faculty'] });
       handleClose();
     },
     onError: (err: any) => {

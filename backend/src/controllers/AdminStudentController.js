@@ -3,25 +3,62 @@ const { sendSuccess } = require('../utils/apiResponse');
 const { BadRequestError } = require('../utils/AppError');
 
 class AdminStudentController {
-  
-  // Reuse existing logic from StudentController for viewing students
+
+  // GET /admin/students — list with optional search + pagination
   async getStudents(req, res) {
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const limit = parseInt(req.query.limit) || 50;
+    const query = req.query.q || '';
     const filters = {};
-    
+
     if (req.query.status) filters.status = req.query.status;
 
-    const result = await StudentMasterDataService.getStudents(filters, page, limit);
+    const result = await StudentMasterDataService.getStudents(filters, page, limit, query);
 
     return sendSuccess(res, {
       message: 'Students retrieved successfully',
       data: result.students,
-      meta: result.meta
+      meta: result.meta,
     });
   }
 
-  // Handle uploading and replacing Student Master Data
+  // POST /admin/students — add a single student
+  async addStudent(req, res) {
+    const { rollNumber, name, timetable } = req.body;
+
+    if (!rollNumber || !String(rollNumber).trim()) {
+      throw new BadRequestError('Roll No is required.');
+    }
+    if (!name || !String(name).trim()) {
+      throw new BadRequestError('Student Name is required.');
+    }
+    if (!timetable || !String(timetable).trim()) {
+      throw new BadRequestError('Timetable is required.');
+    }
+
+    const student = await StudentMasterDataService.addStudent({ rollNumber, name, timetable });
+
+    return sendSuccess(res, {
+      message: `Student "${student.rollNumber}" added successfully.`,
+      data: student,
+      statusCode: 201,
+    });
+  }
+
+  // DELETE /admin/students/:id — remove a single student
+  async deleteStudent(req, res) {
+    const { id } = req.params;
+    if (!id) throw new BadRequestError('Student ID is required.');
+
+    await StudentMasterDataService.deleteStudent(id);
+
+    return sendSuccess(res, {
+      message: 'Student removed from Master Data successfully.',
+      data: null,
+    });
+  }
+
+  // POST /admin/students/upload — bulk replace via Excel
   async uploadStudents(req, res) {
     if (!req.file) {
       throw new BadRequestError('No file uploaded.');
@@ -31,12 +68,11 @@ class AdminStudentController {
 
     return sendSuccess(res, {
       message: result.message,
-      data: {
-        insertedCount: result.insertedCount
-      }
+      data: { insertedCount: result.insertedCount },
     });
   }
 
+  // GET /admin/students/search — legacy endpoint, kept for backwards compat
   async searchStudents(req, res) {
     const query = req.query.q || '';
     const limit = parseInt(req.query.limit) || 10;
@@ -45,7 +81,7 @@ class AdminStudentController {
 
     return sendSuccess(res, {
       message: 'Search results',
-      data: students
+      data: students,
     });
   }
 }

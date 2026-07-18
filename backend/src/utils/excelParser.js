@@ -17,8 +17,12 @@ const parseStudentExcel = (fileBuffer) => {
     const rawData = xlsx.utils.sheet_to_json(sheet, { defval: '' });
 
     if (!rawData || rawData.length === 0) {
-      throw new BadRequestError('The uploaded Excel file is empty.');
+      throw new BadRequestError('The uploaded Excel file is empty or has no data rows.');
     }
+
+    // Log detected headers to help debug column name mismatches
+    const detectedHeaders = Object.keys(rawData[0]);
+    console.log('[ExcelParser] Detected headers:', detectedHeaders);
 
     const parsedStudents = [];
     const rollNumberSet = new Set();
@@ -30,28 +34,25 @@ const parseStudentExcel = (fileBuffer) => {
 
       // Extract values with flexible key matching (case-insensitive, trimming spaces)
       const getVal = (possibleKeys) => {
-        const key = Object.keys(row).find(k => 
+        const key = Object.keys(row).find(k =>
           possibleKeys.some(pk => k.toLowerCase().trim() === pk.toLowerCase())
         );
         return key ? String(row[key]).trim() : '';
       };
 
-      const serialNo = parseInt(getVal(['s.no', 'sno', 'serial no', 'serial number']), 10) || null;
-      const rollNumber = getVal(['roll no', 'roll number', 'rollno', 'id']);
-      const name = getVal(['student name', 'name', 'student']);
-      const timetable = getVal(['timetable', 'time table', 'schedule']);
+      const serialNo = parseInt(getVal(['s.no', 'sno', 's no', 'serial no', 'serial number', 'sl.no', 'sl no']), 10) || null;
+      const rollNumber = getVal(['roll no', 'roll number', 'rollno', 'roll_no', 'rollnumber', 'id', 'student id', 'reg no', 'reg number', 'registration no']);
+      const name = getVal(['student name', 'name', 'student', 'full name', 'fullname', 'student_name']);
+      // timetable is optional — many sheets may not have it
+      const timetable = getVal(['timetable', 'time table', 'schedule', 'tt']) || null;
 
-      // Validation
+      // Only Roll No and Name are required
       if (!rollNumber) {
-        errors.push(`Row ${rowNum}: Missing Roll No.`);
+        errors.push(`Row ${rowNum}: Missing Roll No. (Expected column: "Roll No" or "Roll Number")`);
         return;
       }
       if (!name) {
-        errors.push(`Row ${rowNum}: Missing Student Name.`);
-        return;
-      }
-      if (!timetable) {
-        errors.push(`Row ${rowNum}: Missing Timetable.`);
+        errors.push(`Row ${rowNum}: Missing Student Name. (Expected column: "Student Name" or "Name")`);
         return;
       }
 
@@ -72,13 +73,21 @@ const parseStudentExcel = (fileBuffer) => {
     });
 
     if (errors.length > 0) {
-      throw new BadRequestError(`Excel validation failed with ${errors.length} errors.\n` + errors.slice(0, 10).join('\n') + (errors.length > 10 ? '\n...and more' : ''));
+      throw new BadRequestError(
+        `Excel validation failed with ${errors.length} error(s).\n` +
+        errors.slice(0, 10).join('\n') +
+        (errors.length > 10 ? `\n...and ${errors.length - 10} more errors.` : '')
+      );
+    }
+
+    if (parsedStudents.length === 0) {
+      throw new BadRequestError('No valid student records found. Ensure the sheet has "Roll No" and "Student Name" columns.');
     }
 
     return parsedStudents;
   } catch (error) {
     if (error instanceof BadRequestError) throw error;
-    throw new BadRequestError('Failed to parse Excel file. Please ensure it is a valid format.');
+    throw new BadRequestError('Failed to parse Excel file. Please ensure it is a valid .xlsx or .xls format.');
   }
 };
 

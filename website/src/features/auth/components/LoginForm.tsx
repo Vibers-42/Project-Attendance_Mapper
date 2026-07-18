@@ -37,8 +37,6 @@ export function LoginForm() {
         </CardTitle>
         <CardDescription className="text-center">
           Enter your employee ID and password to access the dashboard.
-          <br/>
-          <span className="text-xs text-muted-foreground">(MVP mode: Any credentials work)</span>
         </CardDescription>
       </CardHeader>
       <CardContent>

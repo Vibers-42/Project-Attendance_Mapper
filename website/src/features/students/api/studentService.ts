@@ -8,6 +8,9 @@ export interface Student {
   barcode: string;
   timetable: string | null;
   status: string;
+  section?: { id: string; name: string } | null;
+  department?: { id: string; name: string; code: string } | null;
+  academicYear?: { id: string; name: string } | null;
 }
 
 export interface GetStudentsResponse {
@@ -30,41 +33,54 @@ export interface UploadResponse {
   };
 }
 
+export interface AddStudentPayload {
+  rollNumber: string;
+  name: string;
+  timetable: string;
+}
+
 export const studentService = {
+  /**
+   * Paginated list of students.
+   * Pass q='' (or omit) to browse all; pass q='...' to filter by roll no or name.
+   */
   getStudents: async (page = 1, limit = 50, query = ''): Promise<GetStudentsResponse> => {
-    const endpoint = query 
-      ? `/admin/students/search?q=${query}&limit=${limit}`
-      : `/admin/students?page=${page}&limit=${limit}`;
-      
-    const response = await apiClient.get<GetStudentsResponse>(endpoint);
-    // In case of search endpoint, it doesn't return meta, so we wrap it
-    if (query) {
-      return {
-        ...response.data,
-        meta: {
-          total: response.data.data.length,
-          page: 1,
-          limit,
-          totalPages: 1
-        }
-      };
+    let url = `/admin/students?page=${page}&limit=${limit}`;
+    if (query && query.trim().length > 0) {
+      url += `&q=${encodeURIComponent(query.trim())}`;
     }
+    const response = await apiClient.get<GetStudentsResponse>(url);
     return response.data;
   },
 
+  /** Add a single student (Roll No + Name + Timetable). */
+  addStudent: async (payload: AddStudentPayload): Promise<Student> => {
+    const response = await apiClient.post<{ success: boolean; message: string; data: Student }>(
+      '/admin/students',
+      payload,
+    );
+    return response.data.data;
+  },
+
+  /** Hard-delete a student by internal UUID. Cascade removes attendance records. */
+  deleteStudent: async (id: string): Promise<void> => {
+    await apiClient.delete(`/admin/students/${id}`);
+  },
+
+  /**
+   * Bulk-replace the entire Student Master Data via an Excel upload.
+   * Required columns: "Roll No" (or alias) + "Student Name" (or alias).
+   * "Timetable" column is optional.
+   */
   uploadStudents: async (file: File): Promise<UploadResponse> => {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     const response = await apiClient.post<UploadResponse>(
-      '/admin/students/upload', 
+      '/admin/students/upload',
       formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      }
+      { headers: { 'Content-Type': 'multipart/form-data' } },
     );
     return response.data;
-  }
+  },
 };

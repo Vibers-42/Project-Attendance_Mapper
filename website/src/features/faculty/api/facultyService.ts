@@ -25,45 +25,55 @@ export interface GetFacultyResponse {
 export interface UploadResponse {
   success: boolean;
   message: string;
-  data: {
-    insertedCount: number;
-  };
+  data: { insertedCount: number };
+}
+
+export interface AddFacultyPayload {
+  facultyId: string;
+  name: string;
 }
 
 export const facultyService = {
+  /**
+   * Unified paginated browse + search.
+   * Pass q='' (or omit) to browse all; pass q='...' to filter by Employee ID or Name.
+   */
   getFaculty: async (page = 1, limit = 50, query = ''): Promise<GetFacultyResponse> => {
-    const endpoint = query 
-      ? `/admin/faculty/search?q=${query}&limit=${limit}`
-      : `/admin/faculty?page=${page}&limit=${limit}`;
-      
-    const response = await apiClient.get<GetFacultyResponse>(endpoint);
-    if (query) {
-      return {
-        ...response.data,
-        meta: {
-          total: response.data.data.length,
-          page: 1,
-          limit,
-          totalPages: 1
-        }
-      };
+    let url = `/admin/faculty?page=${page}&limit=${limit}`;
+    if (query && query.trim().length > 0) {
+      url += `&q=${encodeURIComponent(query.trim())}`;
     }
+    const response = await apiClient.get<GetFacultyResponse>(url);
     return response.data;
   },
 
+  /** Add a single faculty member (Employee ID + Name). Default password: webcap */
+  addFaculty: async (payload: AddFacultyPayload): Promise<Faculty> => {
+    const response = await apiClient.post<{ success: boolean; message: string; data: Faculty }>(
+      '/admin/faculty',
+      payload,
+    );
+    return response.data.data;
+  },
+
+  /** Hard-delete a faculty member by internal UUID. */
+  deleteFaculty: async (id: string): Promise<void> => {
+    await apiClient.delete(`/admin/faculty/${id}`);
+  },
+
+  /**
+   * Bulk-replace Faculty Master Data from an Excel file.
+   * Required columns: "Employee ID" + "Faculty Name".
+   * Each faculty gets default password: webcap.
+   */
   uploadFaculty: async (file: File): Promise<UploadResponse> => {
     const formData = new FormData();
     formData.append('file', file);
-    
     const response = await apiClient.post<UploadResponse>(
-      '/admin/faculty/upload', 
+      '/admin/faculty/upload',
       formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      }
+      { headers: { 'Content-Type': 'multipart/form-data' } },
     );
     return response.data;
-  }
+  },
 };

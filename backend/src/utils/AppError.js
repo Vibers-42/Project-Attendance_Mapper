@@ -43,6 +43,12 @@ class ConflictError extends AppError {
   }
 }
 
+class BadRequestError extends AppError {
+  constructor(message = 'Bad request.') {
+    super(message, 400);
+  }
+}
+
 module.exports = {
   AppError,
   UnauthorizedError,
@@ -50,4 +56,5 @@ module.exports = {
   ValidationError,
   NotFoundError,
   ConflictError,
+  BadRequestError,
 };

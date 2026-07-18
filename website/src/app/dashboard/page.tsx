@@ -3,7 +3,7 @@
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { Navbar } from '@/features/dashboard/components/Navbar';
 import { DashboardCard } from '@/features/dashboard/components/DashboardCard';
-import { Users, FileSpreadsheet, BookOpenCheck } from 'lucide-react';
+import { Users, CalendarCheck, BookOpenCheck } from 'lucide-react';
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -18,7 +18,7 @@ export default function DashboardPage() {
         <section className="space-y-2">
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
             Welcome, <br className="sm:hidden" />
-            <span className="text-blue-600 dark:text-blue-500">{user?.employeeName || 'Admin'}</span>
+            <span className="text-blue-600 dark:text-blue-500">{user?.employeeName || 'Super Admin'}</span>
           </h1>
           <p className="text-lg text-zinc-600 dark:text-zinc-400 max-w-2xl">
             Attendance Mapper Administration Portal
@@ -40,10 +40,10 @@ export default function DashboardPage() {
             icon={BookOpenCheck}
           />
           <DashboardCard
-            title="Workbook Generation"
-            description="Generate and download Attendance Workbooks."
+            title="Attendance Reports"
+            description="View, filter, and download attendance session workbooks. Workbooks are generated instantly from live session data."
             href="/workbooks"
-            icon={FileSpreadsheet}
+            icon={CalendarCheck}
           />
         </section>
 

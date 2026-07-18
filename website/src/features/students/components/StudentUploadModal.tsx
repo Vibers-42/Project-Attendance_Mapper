@@ -72,14 +72,17 @@ export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps)
       return studentService.uploadStudents(file);
     },
     onSuccess: (data) => {
+      // Remove all cached student pages so the table always shows fresh data
+      queryClient.removeQueries({ queryKey: ['students'] });
       toast.success(data.message || 'Students uploaded successfully!');
-      queryClient.invalidateQueries({ queryKey: ['students'] });
       handleClose();
     },
     onError: (err: any) => {
-      const msg = err?.response?.data?.message || err.message || 'Upload failed';
+      // Surface the full backend message (including validation errors from excel parser)
+      const backendMsg = err?.response?.data?.message;
+      const msg = backendMsg || err.message || 'Upload failed. Please try again.';
       setError(msg);
-      toast.error('Upload Failed');
+      toast.error('Upload failed', { description: msg.split('\n')[0] });
     }
   });
 

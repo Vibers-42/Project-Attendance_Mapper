@@ -99,7 +99,7 @@ function buildYearOptions(): { label: string; batch: string }[] {
   // Indian academic year starts ~June. If before June, we're still in the prev year.
   const academicStartYear = now.getMonth() >= 5 ? now.getFullYear() : now.getFullYear() - 1;
   const options: { label: string; batch: string }[] = [{ label: 'All', batch: '' }];
-  for (let yr = 1; yr <= 4; yr++) {
+  for (let yr = 2; yr <= 3; yr++) {
     const admissionYear = academicStartYear - yr + 1;
     const prefix = String(admissionYear).slice(-2); // e.g. 2025 → "25"
     options.push({ label: `${yr}${yr === 1 ? 'st' : yr === 2 ? 'nd' : yr === 3 ? 'rd' : 'th'} Year`, batch: prefix });

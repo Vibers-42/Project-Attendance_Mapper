@@ -41,26 +41,26 @@ class FacultyRepository {
     return prisma.faculty.count({ where });
   }
 
-  // ─── Paginated search (SQLite-safe: no mode:'insensitive') ───────────────
+  // ─── Paginated search (PostgreSQL: mode:'insensitive' for case-insensitive) ──
   async searchPaginated(query, skip = 0, take = 50) {
     const q = query.trim();
     return prisma.faculty.findMany({
       where: {
         OR: [
-          { facultyId: { contains: q } },
-          { name:      { contains: q } },
+          { facultyId: { contains: q, mode: 'insensitive' } },
+          { name:      { contains: q, mode: 'insensitive' } },
         ],
       },
       skip,
       take,
       orderBy: { facultyId: 'asc' },
       select: {
-        id: true,
-        facultyId: true,
-        name: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
+        id:          true,
+        facultyId:   true,
+        name:        true,
+        role:        true,
+        isActive:    true,
+        createdAt:   true,
         lastLoginAt: true,
       },
     });
@@ -71,8 +71,8 @@ class FacultyRepository {
     return prisma.faculty.count({
       where: {
         OR: [
-          { facultyId: { contains: q } },
-          { name:      { contains: q } },
+          { facultyId: { contains: q, mode: 'insensitive' } },
+          { name:      { contains: q, mode: 'insensitive' } },
         ],
       },
     });

@@ -23,9 +23,10 @@ const authenticate = (req, res, next) => {
   try {
     const decoded = verifyToken(token);
     req.user = {
-      id: decoded.id,
+      id:        decoded.id,
       facultyId: decoded.facultyId,
-      role: decoded.role,
+      role:      decoded.role,
+      source:    decoded.source || 'superadmin',  // 'superadmin' | 'faculty' — which table authenticated this user
     };
     next();
   } catch (err) {

@@ -14,6 +14,12 @@ router.post('/upload', upload.single('file'), adminFacultyController.uploadFacul
 // POST /api/v1/admin/faculty           — add a single faculty member
 router.post('/', adminFacultyController.addFaculty);
 
+// PATCH /api/v1/admin/faculty/promote-superadmin — grant SUPER_ADMIN role to selected faculty
+router.patch('/promote-superadmin', adminFacultyController.promoteToSuperAdmin);
+
+// PATCH /api/v1/admin/faculty/revoke-superadmin  — revert selected faculty back to FACULTY role
+router.patch('/revoke-superadmin', adminFacultyController.revokeSuperAdmin);
+
 // DELETE /api/v1/admin/faculty/:id     — remove a single faculty member
 router.delete('/:id', adminFacultyController.deleteFaculty);
 

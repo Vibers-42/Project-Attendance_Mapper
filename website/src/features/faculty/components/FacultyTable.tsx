@@ -7,28 +7,30 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
   Search, Loader2, ChevronLeft, ChevronRight,
-  ChevronsLeft, ChevronsRight, X, AlertCircle, UserPlus, Trash2,
+  ChevronsLeft, ChevronsRight, X, AlertCircle, UserPlus, Trash2, ShieldCheck,
 } from 'lucide-react';
 import { useDebounce } from 'use-debounce';
-import { AddFacultyModal }    from './AddFacultyModal';
-import { DeleteFacultyDialog } from './DeleteFacultyDialog';
+import { AddFacultyModal }        from './AddFacultyModal';
+import { DeleteFacultyDialog }    from './DeleteFacultyDialog';
+import { ManageSuperAdminModal }  from './ManageSuperAdminModal';
 
-// ─── Column widths — shared between header and body tables ────────────────────
+// ─── Column widths ─────────────────────────────────────────────────────────────
 const COLS = [
-  { key: 'sno',       label: 'S.No',        width: 60,              align: 'left'  },
-  { key: 'empid',     label: 'Employee ID',  width: 130,             align: 'left'  },
-  { key: 'name',      label: 'Faculty Name', width: 'auto' as const, align: 'left'  },
-  { key: 'created',   label: 'Created Date', width: 120,             align: 'left'  },
-  { key: 'status',    label: 'Status',       width: 90,              align: 'right' },
-  { key: 'action',    label: 'Action',       width: 68,              align: 'right' },
+  { key: 'sno',     label: 'S.No',        width: 60,              align: 'left'   },
+  { key: 'empid',   label: 'Employee ID',  width: 130,             align: 'left'   },
+  { key: 'name',    label: 'Faculty Name', width: 'auto' as const, align: 'left'   },
+  { key: 'role',    label: 'Role',         width: 130,             align: 'left'   },
+  { key: 'created', label: 'Created Date', width: 120,             align: 'left'   },
+  { key: 'status',  label: 'Status',       width: 90,              align: 'right'  },
+  { key: 'action',  label: 'Action',       width: 68,              align: 'right'  },
 ] as const;
 
 const PAGE_SIZE    = 50;
 const ROW_HEIGHT   = 48;
 const VISIBLE_ROWS = 14;
-const CONTAINER_H  = ROW_HEIGHT * VISIBLE_ROWS; // 672 px
+const CONTAINER_H  = ROW_HEIGHT * VISIBLE_ROWS;
 
-// ─── Shared colgroup ──────────────────────────────────────────────────────────
+// ─── Shared colgroup ────────────────────────────────────────────────────────────
 function TableColGroup() {
   return (
     <colgroup>
@@ -42,10 +44,10 @@ function TableColGroup() {
   );
 }
 
-// ─── Virtual scroll hook ──────────────────────────────────────────────────────
+// ─── Virtual scroll hook ────────────────────────────────────────────────────────
 function useVirtualScroll(items: Faculty[]) {
   const ref = useRef<HTMLDivElement>(null);
-  const [scrollTop, setScrollTop]         = useState(0);
+  const [scrollTop, setScrollTop]           = useState(0);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
 
   const onScroll = useCallback(() => {
@@ -76,7 +78,7 @@ function useVirtualScroll(items: Faculty[]) {
   return { ref, totalH, visible, offsetTop, start, scrollbarWidth };
 }
 
-// ─── Status badge ─────────────────────────────────────────────────────────────
+// ─── Status badge ──────────────────────────────────────────────────────────────
 function StatusBadge({ isActive }: { isActive: boolean }) {
   return isActive ? (
     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
@@ -89,13 +91,31 @@ function StatusBadge({ isActive }: { isActive: boolean }) {
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Role badge ────────────────────────────────────────────────────────────────
+function RoleBadge({ role }: { role: Faculty['role'] }) {
+  if (role === 'SUPER_ADMIN') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+        <ShieldCheck className="w-3 h-3" />
+        Super Admin
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+      Faculty
+    </span>
+  );
+}
+
+// ─── Main component ─────────────────────────────────────────────────────────────
 export function FacultyTable() {
   const [page, setPage]           = useState(1);
   const [search, setSearch]       = useState('');
   const [jumpValue, setJumpValue] = useState('');
   const [addOpen, setAddOpen]     = useState(false);
   const [delTarget, setDelTarget] = useState<Faculty | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
   const [debouncedSearch]         = useDebounce(search, 250);
 
   const clearSearch = useCallback(() => { setSearch(''); setPage(1); setJumpValue(''); }, []);
@@ -133,10 +153,11 @@ export function FacultyTable() {
     <>
       <AddFacultyModal    isOpen={addOpen}    onClose={() => setAddOpen(false)} />
       <DeleteFacultyDialog faculty={delTarget} onClose={() => setDelTarget(null)} />
+      <ManageSuperAdminModal isOpen={manageOpen} onClose={() => setManageOpen(false)} />
 
       <div className="space-y-3">
 
-        {/* ── Toolbar ──────────────────────────────────────────────────────── */}
+        {/* ── Toolbar ──────────────────────────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
           <div className="relative w-full sm:w-96">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
@@ -158,7 +179,7 @@ export function FacultyTable() {
             )}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
             {isFetching && !isLoading && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
             {!isLoading && !isError && (
               <span className="text-sm text-zinc-500 font-medium whitespace-nowrap">
@@ -169,6 +190,19 @@ export function FacultyTable() {
                   : `${from}–${to} of ${total.toLocaleString()} records`}
               </span>
             )}
+
+            {/* Manage Super Admin button */}
+            <Button
+              id="manage-superadmin-btn"
+              onClick={() => setManageOpen(true)}
+              variant="outline"
+              className="gap-2 border-violet-300 text-violet-700 dark:border-violet-700 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 shrink-0"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              Manage Super Admin
+            </Button>
+
+            {/* Add Faculty button */}
             <Button
               id="add-faculty-btn"
               onClick={() => setAddOpen(true)}
@@ -180,7 +214,7 @@ export function FacultyTable() {
           </div>
         </div>
 
-        {/* ── Table ────────────────────────────────────────────────────────── */}
+        {/* ── Table ────────────────────────────────────────────────────────────── */}
         <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
 
           {/* HEADER */}
@@ -259,7 +293,9 @@ export function FacultyTable() {
                       return (
                         <tr
                           key={faculty.id}
-                          className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors"
+                          className={`border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors ${
+                            faculty.role === 'SUPER_ADMIN' ? 'bg-violet-50/30 dark:bg-violet-900/5' : ''
+                          }`}
                           style={{ height: `${ROW_HEIGHT}px` }}
                         >
                           {/* S.No */}
@@ -275,6 +311,11 @@ export function FacultyTable() {
                           {/* Name */}
                           <td className="px-4 text-sm text-zinc-700 dark:text-zinc-300 truncate">
                             {faculty.name}
+                          </td>
+
+                          {/* Role */}
+                          <td className="px-4">
+                            <RoleBadge role={faculty.role} />
                           </td>
 
                           {/* Created Date */}

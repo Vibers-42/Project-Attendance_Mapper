@@ -39,14 +39,14 @@ const buildWorkbook = (overallData, roomDataMap, sessionInfoMap) => {
 
     const sessionInfo = sessionInfoMap[roomName] || {};
     sheetData.push({ 'S.No': 'SESSION INFORMATION' });
-    sheetData.push({ 'S.No': 'Professor Name',            'Roll No': sessionInfo.professorName          || 'N/A' });
-    sheetData.push({ 'S.No': 'Lab Incharge Name',         'Roll No': sessionInfo.labInchargeName        || 'N/A' });
-    sheetData.push({ 'S.No': 'Lab Incharge Employee ID',  'Roll No': sessionInfo.labInchargeEmployeeId  || 'N/A' });
+    sheetData.push({ 'S.No': 'Faculty ID',                'Roll No': sessionInfo.professorId            || 'N/A' });
+    sheetData.push({ 'S.No': 'Faculty Name',              'Roll No': sessionInfo.professorName          || 'N/A' });
+    sheetData.push({ 'S.No': 'Trainer Name',              'Roll No': sessionInfo.labInchargeName        || 'N/A' });
+    sheetData.push({ 'S.No': 'Trainer Employee ID',       'Roll No': sessionInfo.labInchargeEmployeeId  || 'N/A' });
+    sheetData.push({ 'S.No': 'Room Number',               'Roll No': sessionInfo.room                   || roomName });
+    sheetData.push({ 'S.No': 'Topic',                     'Roll No': sessionInfo.topic                  || 'N/A' });
     sheetData.push({ 'S.No': 'Session Date',              'Roll No': sessionInfo.sessionDate            || 'N/A' });
     sheetData.push({ 'S.No': 'Session Time',              'Roll No': sessionInfo.sessionTime            || 'N/A' });
-    sheetData.push({ 'S.No': 'Subject',                   'Roll No': sessionInfo.subject                || 'N/A' });
-    sheetData.push({ 'S.No': 'Topic',                     'Roll No': sessionInfo.topic                  || 'N/A' });
-    sheetData.push({ 'S.No': 'Room',                      'Roll No': roomName });
 
     const roomSheet = xlsx.utils.json_to_sheet(sheetData);
     roomSheet['!cols'] = [

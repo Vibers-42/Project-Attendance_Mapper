@@ -1,10 +1,12 @@
 import { apiClient } from '@/services/api';
 
+export type FacultyRole = 'FACULTY' | 'SUPER_ADMIN';
+
 export interface Faculty {
   id: string;
   facultyId: string;
   name: string;
-  role: string;
+  role: FacultyRole;
   isActive: boolean;
   createdAt: string;
   lastLoginAt: string | null;
@@ -31,6 +33,12 @@ export interface UploadResponse {
 export interface AddFacultyPayload {
   facultyId: string;
   name: string;
+}
+
+export interface RoleChangeResponse {
+  success: boolean;
+  message: string;
+  data: { updatedCount: number };
 }
 
 export const facultyService = {
@@ -73,6 +81,29 @@ export const facultyService = {
       '/admin/faculty/upload',
       formData,
       { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return response.data;
+  },
+
+  /**
+   * Promote one or more faculty members to SUPER_ADMIN role.
+   * Gives them app login + attendance-taking at admin level.
+   */
+  promoteToSuperAdmin: async (ids: string[]): Promise<RoleChangeResponse> => {
+    const response = await apiClient.patch<RoleChangeResponse>(
+      '/admin/faculty/promote-superadmin',
+      { ids },
+    );
+    return response.data;
+  },
+
+  /**
+   * Revert one or more SUPER_ADMIN faculty back to the FACULTY role.
+   */
+  revokeSuperAdmin: async (ids: string[]): Promise<RoleChangeResponse> => {
+    const response = await apiClient.patch<RoleChangeResponse>(
+      '/admin/faculty/revoke-superadmin',
+      { ids },
     );
     return response.data;
   },

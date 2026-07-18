@@ -27,11 +27,11 @@ class SuperAdminAuthController {
   /**
    * GET /api/v1/admin/auth/me
    * Returns the currently authenticated Super Admin's profile.
-   * Requires valid Bearer JWT token (handled by authenticate middleware on the route).
+   * req.user is populated by the authenticate middleware from the JWT payload.
+   * We pass the full payload (not just id) so getProfile knows which table to query.
    */
   async getMe(req, res) {
-    // req.user is populated by the authenticate middleware
-    const user = await superAdminAuthService.getProfile(req.user.id);
+    const user = await superAdminAuthService.getProfile(req.user);
 
     return sendSuccess(res, {
       data: { user },

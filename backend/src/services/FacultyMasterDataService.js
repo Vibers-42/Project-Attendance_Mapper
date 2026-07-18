@@ -1,7 +1,7 @@
 const FacultyRepository = require('../repositories/FacultyRepository');
 const { parseFacultyExcel } = require('../utils/excelParser');
 const { hashPassword } = require('../utils/passwordUtils');
-const { ConflictError, NotFoundError } = require('../utils/AppError');
+const { ConflictError, NotFoundError, BadRequestError } = require('../utils/AppError');
 const prisma = require('../config/prisma');
 
 const DEFAULT_PASSWORD = 'webcap';
@@ -73,6 +73,45 @@ class FacultyMasterDataService {
     const faculty = await prisma.faculty.findUnique({ where: { id } });
     if (!faculty) throw new NotFoundError('Faculty member not found.');
     return await FacultyRepository.deleteById(id);
+  }
+
+  /**
+   * Promote one or more faculty members to SUPER_ADMIN role.
+   * Idempotent: already-promoted faculty are silently included in count.
+   * This only updates Faculty.role — the SuperAdmin website table is separate.
+   * @param {string[]} ids — internal UUIDs of Faculty rows
+   */
+  async promoteToSuperAdmin(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestError('At least one faculty ID is required.');
+    }
+    const { count } = await prisma.faculty.updateMany({
+      where: { id: { in: ids } },
+      data:  { role: 'SUPER_ADMIN' },
+    });
+    return {
+      updatedCount: count,
+      message: `${count} faculty member(s) promoted to Super Admin.`,
+    };
+  }
+
+  /**
+   * Revoke SUPER_ADMIN back to FACULTY for one or more members.
+   * Idempotent: already-FACULTY members are silently included in count.
+   * @param {string[]} ids — internal UUIDs of Faculty rows
+   */
+  async revokeSuperAdmin(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestError('At least one faculty ID is required.');
+    }
+    const { count } = await prisma.faculty.updateMany({
+      where: { id: { in: ids } },
+      data:  { role: 'FACULTY' },
+    });
+    return {
+      updatedCount: count,
+      message: `${count} faculty member(s) reverted to Faculty role.`,
+    };
   }
 
   /**

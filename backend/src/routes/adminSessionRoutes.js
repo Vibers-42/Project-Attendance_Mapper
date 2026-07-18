@@ -1,19 +1,18 @@
 const express = require('express');
-const router = express.Router();
-const adminSessionController = require('../controllers/AdminSessionController');
+const router  = express.Router();
+const ctrl    = require('../controllers/AdminSessionController');
 
-// NOTE: Static paths must come before parameterised /:id
+// ─── IMPORTANT: static paths must come BEFORE parameterised /:id ───────────
 
-// GET  /api/v1/admin/sessions                — list all sessions (filtered, paginated)
-router.get('/', adminSessionController.listSessions);
+// Workbook-level routes (class-centric)
+router.get('/',              ctrl.listSessions);       // GET  /admin/sessions           — grouped workbooks
+router.get('/raw',           ctrl.listRawSessions);    // GET  /admin/sessions/raw        — individual sessions
+router.get('/download',      ctrl.downloadSession);    // GET  /admin/sessions/download   — consolidated xlsx stream
+router.delete('/workbook',   ctrl.deleteWorkbook);     // DELETE /admin/sessions/workbook — delete all sessions for a class
 
-// GET  /api/v1/admin/sessions/:id/download   — generate + stream workbook (no disk storage)
-router.get('/:id/download', adminSessionController.downloadSession);
-
-// POST /api/v1/admin/sessions/bulk-delete — bulk delete sessions
-router.post('/bulk-delete', adminSessionController.bulkDeleteSessions);
-
-// DELETE /api/v1/admin/sessions/:id          — hard delete session + cascade records
-router.delete('/:id', adminSessionController.deleteSession);
+// Bulk / single session management
+router.post('/bulk-delete',  ctrl.bulkDeleteSessions);     // POST   /admin/sessions/bulk-delete
+router.get('/:id/download',  ctrl.downloadSingleSession);  // GET    /admin/sessions/:id/download — single session worksheet
+router.delete('/:id',        ctrl.deleteSession);          // DELETE /admin/sessions/:id
 
 module.exports = router;

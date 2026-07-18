@@ -68,6 +68,26 @@ class AdminFacultyController {
       data: { insertedCount: result.insertedCount },
     });
   }
+
+  // PATCH /admin/faculty/promote-superadmin — promote one or more faculty to SUPER_ADMIN
+  async promoteToSuperAdmin(req, res) {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestError('ids must be a non-empty array of faculty UUIDs.');
+    }
+    const result = await FacultyMasterDataService.promoteToSuperAdmin(ids);
+    return sendSuccess(res, { message: result.message, data: { updatedCount: result.updatedCount } });
+  }
+
+  // PATCH /admin/faculty/revoke-superadmin — revert SUPER_ADMIN back to FACULTY
+  async revokeSuperAdmin(req, res) {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestError('ids must be a non-empty array of faculty UUIDs.');
+    }
+    const result = await FacultyMasterDataService.revokeSuperAdmin(ids);
+    return sendSuccess(res, { message: result.message, data: { updatedCount: result.updatedCount } });
+  }
 }
 
 module.exports = new AdminFacultyController();

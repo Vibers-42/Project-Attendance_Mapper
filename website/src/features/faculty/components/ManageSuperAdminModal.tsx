@@ -149,7 +149,10 @@ export function ManageSuperAdminModal({ isOpen, onClose }: Props) {
   // Split by role; exclude the currently logged-in super admin from the revoke list
   // (prevents self-demotion via the modal)
   const currentUserFacultyId = user?.employeeId ?? '';
-  const regularFaculty   = useMemo(() => allFaculty.filter(f => f.role === 'FACULTY'),      [allFaculty]);
+  const regularFaculty = useMemo(
+    () => allFaculty.filter(f => f.role === 'FACULTY' && f.facultyId !== currentUserFacultyId),
+    [allFaculty, currentUserFacultyId]
+  );
   const superAdminFaculty = useMemo(
     () => allFaculty.filter(f => f.role === 'SUPER_ADMIN' && f.facultyId !== currentUserFacultyId),
     [allFaculty, currentUserFacultyId],

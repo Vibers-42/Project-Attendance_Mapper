@@ -29,8 +29,21 @@ class FacultyMasterDataService {
       ]);
     }
 
+    // Unify roles: if a faculty is an original Super Admin in the SuperAdmin table,
+    // ensure their role is reported as SUPER_ADMIN to the frontend.
+    const activeSuperAdmins = await prisma.superAdmin.findMany({
+      where: { isActive: true },
+      select: { employeeId: true },
+    });
+    const superAdminIds = new Set(activeSuperAdmins.map((s) => s.employeeId));
+
+    const unifiedFaculty = faculty.map((f) => ({
+      ...f,
+      role: superAdminIds.has(f.facultyId) ? 'SUPER_ADMIN' : f.role,
+    }));
+
     return {
-      faculty,
+      faculty: unifiedFaculty,
       meta: {
         total,
         page,
@@ -104,10 +117,27 @@ class FacultyMasterDataService {
     if (!Array.isArray(ids) || ids.length === 0) {
       throw new BadRequestError('At least one faculty ID is required.');
     }
+
+    // First find the facultyIds for these UUIDs so we can remove them from the legacy SuperAdmin table
+    const targetFaculty = await prisma.faculty.findMany({
+      where: { id: { in: ids } },
+      select: { facultyId: true },
+    });
+    const facultyIds = targetFaculty.map((f) => f.facultyId);
+
+    // Delete from original SuperAdmin table to completely revoke website access
+    if (facultyIds.length > 0) {
+      await prisma.superAdmin.deleteMany({
+        where: { employeeId: { in: facultyIds } },
+      }).catch(() => {}); // ignore if they were never in this table
+    }
+
+    // Update Faculty role back to FACULTY
     const { count } = await prisma.faculty.updateMany({
       where: { id: { in: ids } },
       data:  { role: 'FACULTY' },
     });
+    
     return {
       updatedCount: count,
       message: `${count} faculty member(s) reverted to Faculty role.`,

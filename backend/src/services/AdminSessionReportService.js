@@ -42,7 +42,12 @@ class AdminSessionReportService {
     const where = {};
 
     if (topic && topic !== 'All') {
-      where.topic = topic;
+      // Match sessions whose topic field contains the keyword OR whose linked
+      // subject name contains it (e.g. "Aptitude" matches "Employability Skills - Aptitude")
+      where.OR = [
+        { topic: { contains: topic, mode: 'insensitive' } },
+        { subject: { name: { contains: topic, mode: 'insensitive' } } },
+      ];
     }
     if (date) {
       const d = new Date(date);
@@ -60,16 +65,19 @@ class AdminSessionReportService {
       orderBy: { date: 'desc' },
       include: {
         academicYear: { select: { id: true, name: true } },
+        subject:      { select: { id: true, name: true } },
         _count:       { select: { records: true } },
       },
     });
 
-    // ── Group by (academicYearId, topic, date-day) ────────────────────────────
+    // ── Group by (academicYearId, derived-topic, date-day) ────────────────────
     const groupMap = new Map();
 
     for (const session of allSessions) {
       const acYearId = session.academicYearId || '__none__';
-      const topicKey = (session.topic || '').toLowerCase().trim();
+      // Prefer the session's own topic; fall back to the short name derived from subject
+      const derivedTopic = session.topic || this._deriveTopicFromSubject(session.subject?.name);
+      const topicKey = (derivedTopic || '').toLowerCase().trim();
 
       // Use UTC date components to match the UTC day-range used in downloadWorkbook.
       // This prevents a session at 23:xx local time from grouping into the wrong day.
@@ -82,10 +90,10 @@ class AdminSessionReportService {
         groupMap.set(groupKey, {
           _key:         groupKey,
           academicYear: session.academicYear,
-          topic:        session.topic,
-          date:         session.date,   // representative ISO date (first seen in group)
+          topic:        derivedTopic,  // use derived topic so name shows "Aptitude" not null
+          date:         session.date,
           sessionCount: 0,
-          totalRecords: 0,             // sum of _count.records; > 0 means at least one session has data
+          totalRecords: 0,
         });
       }
 
@@ -170,12 +178,23 @@ class AdminSessionReportService {
       date: { gte: dayStart, lte: dayEnd },
     };
 
-    // Handle null/empty topic correctly in Prisma:
-    // Passing `topic: null` matches NULL DB rows; passing a string matches that string.
+    // Handle null/empty topic correctly in Prisma.
     const normTopic = (topic === null || topic === '' || topic === 'null' || topic === 'undefined')
       ? null
       : topic;
-    where.topic = normTopic;
+
+    // Sessions may have been created with topic=null + a linked subject (Flutter-created sessions).
+    // In that case, the display topic is derived from subject.name (e.g. "Aptitude").
+    // We need to find those sessions too, so match EITHER the explicit topic field OR
+    // sessions whose subject name contains the derived topic keyword.
+    if (normTopic !== null) {
+      where.OR = [
+        { topic: normTopic },
+        { topic: null, subject: { name: { contains: normTopic, mode: 'insensitive' } } },
+      ];
+    } else {
+      where.topic = null;
+    }
 
     if (academicYearId && academicYearId !== 'null' && academicYearId !== 'undefined') {
       where.academicYearId = academicYearId;
@@ -209,23 +228,33 @@ class AdminSessionReportService {
     // ── 5. Determine academic year context ────────────────────────────────────
     const acYear = sessions[0].academicYear;
 
-    // ── 6. Load ALL students for this academic year, sorted by timetable ──────
-    const studentWhere = { status: 'ACTIVE' };
-    if (acYear?.id) {
-      studentWhere.academicYearId = acYear.id;
-    }
-
-    const allStudents = await prisma.student.findMany({
-      where:   studentWhere,
-      orderBy: [{ timetable: 'asc' }, { rollNumber: 'asc' }],
-    });
-
-    // ── 7. Build the UNION of all present roll numbers across all sessions ─────
+    // ── 6. Build the UNION of all present roll numbers across all sessions ─────
+    // (done before student query so we can use it as a fallback filter)
     const presentRollNumbers = new Set();
     for (const session of sessions) {
       for (const record of session.records) {
         presentRollNumbers.add(record.studentRollNumber);
       }
+    }
+
+    // ── 7. Load ALL students for this academic year, sorted by timetable ──────
+    const studentWhere = { status: 'ACTIVE' };
+    if (acYear?.id) {
+      studentWhere.academicYearId = acYear.id;
+    }
+
+    let allStudents = await prisma.student.findMany({
+      where:   studentWhere,
+      orderBy: [{ timetable: 'asc' }, { rollNumber: 'asc' }],
+    });
+
+    // If no students found via academicYearId (students may not have the link yet),
+    // fall back to showing only the students who were actually present in these sessions.
+    if (allStudents.length === 0 && presentRollNumbers.size > 0) {
+      allStudents = await prisma.student.findMany({
+        where:   { rollNumber: { in: [...presentRollNumbers] } },
+        orderBy: [{ timetable: 'asc' }, { rollNumber: 'asc' }],
+      });
     }
 
     // ── 8. Sheet 1 — Overall Attendance ──────────────────────────────────────
@@ -302,6 +331,18 @@ class AdminSessionReportService {
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
+   * Extracts a short display topic from a full subject name.
+   * "Employability Skills - Aptitude" → "Aptitude"
+   * "Employability Skills - Soft Skills" → "Soft Skills"
+   * Returns null if subjectName is falsy.
+   */
+  _deriveTopicFromSubject(subjectName) {
+    if (!subjectName) return null;
+    const idx = subjectName.lastIndexOf(' - ');
+    return idx !== -1 ? subjectName.slice(idx + 3).trim() : subjectName.trim();
+  }
+
+  /**
    * Builds the canonical Workbook Name displayed in the table and used as
    * the downloaded file name.
    *
@@ -353,74 +394,178 @@ class AdminSessionReportService {
       where:   { id: sessionId },
       include: { faculty: true, room: true, subject: true, academicYear: true, records: true },
     });
-
     if (!session) throw new NotFoundError('Attendance session not found.');
-
     if (session.records.length === 0) {
       throw new BadRequestError(
-        'No attendance records have been submitted for this session yet. ' +
-        'Download is only available once attendance has been recorded.'
+        'No attendance records submitted yet. Download is available once attendance is recorded.'
       );
     }
 
-    // ── 2. Collect present roll numbers ────────────────────────────────────────
+    // ── 2. Collect present students ────────────────────────────────────────────
     const presentRollNumbers = new Set(session.records.map(r => r.studentRollNumber));
-
-    // ── 3. Load only students that are present, preserving timetable order ─────
     const allStudents = await prisma.student.findMany({
       where:   { rollNumber: { in: [...presentRollNumbers] } },
       orderBy: [{ timetable: 'asc' }, { rollNumber: 'asc' }],
     });
 
-    // ── 4. Build student rows ──────────────────────────────────────────────────
     const pad = (n) => n.toString().padStart(2, '0');
     const d   = new Date(session.date);
-    const dateStr = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
+    const dateStr      = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
+    const roomName     = session.room?.name || 'N/A';
+    const topicDisplay = session.topic || this._deriveTopicFromSubject(session.subject?.name) || 'N/A';
 
-    let sno = 1;
-    const sheetData = allStudents.map(student => ({
-      'S.No':              sno++,
-      'Roll No':           student.rollNumber,
-      'Student Name':      student.name,
-      'Timetable':         student.timetable || '',
-      'Attendance Status': 'P',
-    }));
+    // ── 3. Build styled workbook with ExcelJS ──────────────────────────────────
+    const ExcelJS  = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    const ws       = workbook.addWorksheet('Session Report', { pageSetup: { fitToPage: true } });
 
-    // ── 5. Blank separator ─────────────────────────────────────────────────────
-    sheetData.push({});
-    sheetData.push({});
-
-    // ── 6. Session info block ──────────────────────────────────────────────────
-    const roomName = session.room?.name || 'N/A';
-    sheetData.push({ 'S.No': 'SESSION INFORMATION' });
-    sheetData.push({ 'S.No': 'Faculty ID',    'Roll No': session.faculty?.facultyId    || 'N/A' });
-    sheetData.push({ 'S.No': 'Faculty Name',  'Roll No': session.faculty?.name         || 'N/A' });
-    sheetData.push({ 'S.No': 'Trainer Name',  'Roll No': session.labIncharge           || 'N/A' });
-    sheetData.push({ 'S.No': 'Room Number',   'Roll No': roomName });
-    sheetData.push({ 'S.No': 'Topic',         'Roll No': session.topic                 || 'N/A' });
-    sheetData.push({ 'S.No': 'Session Date',  'Roll No': dateStr });
-    sheetData.push({ 'S.No': 'Session Time',  'Roll No': session.sessionTime           || 'N/A' });
-
-    // ── 7. Build single-sheet workbook in memory ───────────────────────────────
-    const xlsx = require('xlsx');
-    const wb   = xlsx.utils.book_new();
-    const ws   = xlsx.utils.json_to_sheet(sheetData);
-    ws['!cols'] = [
-      { wch: 22 },  // S.No / Info Label
-      { wch: 18 },  // Roll No / Info Value
-      { wch: 30 },  // Student Name
-      { wch: 15 },  // Timetable
-      { wch: 18 },  // Attendance Status
+    // Column definitions (A–E)
+    ws.columns = [
+      { width: 22 },  // A: label / S.No
+      { width: 26 },  // B: (label continued / Roll No)
+      { width: 34 },  // C: value / Student Name
+      { width: 15 },  // D: value continued / Timetable
+      { width: 18 },  // E: value continued / Status
     ];
-    xlsx.utils.book_append_sheet(wb, ws, 'Session Report');
-    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
-    // ── 8. Build file name ─────────────────────────────────────────────────────
+    // ── Shared style helpers ───────────────────────────────────────────────────
+    const thin = { style: 'thin', color: { argb: 'FFCBD5E1' } };
+    const thinBorder = { top: thin, left: thin, bottom: thin, right: thin };
+
+    const fill = (hex) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: hex } });
+    const font = (hex, { bold = false, size = 10, name = 'Calibri' } = {}) =>
+      ({ name, bold, size, color: { argb: hex } });
+    const align = (h, v = 'middle', indent = 0) =>
+      ({ horizontal: h, vertical: v, indent, wrapText: false });
+
+    const styleCell = (ref, { bg, fg, bold, size, alignH = 'left', indent = 0, border = false } = {}) => {
+      const cell = typeof ref === 'string' ? ws.getCell(ref) : ref;
+      if (bg)     cell.fill      = fill(bg);
+      if (fg)     cell.font      = font(fg, { bold, size });
+      if (border) cell.border    = thinBorder;
+      cell.alignment = align(alignH, 'middle', indent);
+      return cell;
+    };
+
+    let rn = 0; // current row number tracker
+
+    // ── Row 1: Big title ───────────────────────────────────────────────────────
+    rn++;
+    ws.mergeCells(`A${rn}:E${rn}`);
+    ws.getRow(rn).height = 34;
+    const titleCell = ws.getCell(`A${rn}`);
+    titleCell.value = 'ATTENDANCE REPORT';
+    styleCell(titleCell, { bg: 'FF1E40AF', fg: 'FFFFFFFF', bold: true, size: 16, alignH: 'center' });
+
+    // ── Row 2: Subtitle ────────────────────────────────────────────────────────
+    rn++;
+    ws.mergeCells(`A${rn}:E${rn}`);
+    ws.getRow(rn).height = 22;
+    const subCell = ws.getCell(`A${rn}`);
+    subCell.value = `${topicDisplay}   ·   ${dateStr}   ·   ${roomName}   ·   ${session.academicYear?.name || 'All Years'}`;
+    styleCell(subCell, { bg: 'FF2563EB', fg: 'FFFFFFFF', size: 10, alignH: 'center' });
+
+    // ── Row 3: Gap ─────────────────────────────────────────────────────────────
+    rn++;
+    ws.getRow(rn).height = 10;
+
+    // ── Rows 4–12: Session info table ──────────────────────────────────────────
+    const infoRows = [
+      ['Faculty ID',          session.faculty?.facultyId    || 'N/A'],
+      ['Faculty Name',        session.faculty?.name         || 'N/A'],
+      ['Trainer Name',        session.labIncharge           || 'N/A'],
+      ['Trainer Employee ID', session.labInchargeEmployeeId || 'N/A'],
+      ['Room Number',         roomName],
+      ['Topic',               topicDisplay],
+      ['Session Date',        dateStr],
+      ['Session Time',        session.sessionTime           || 'N/A'],
+      ['Students Present',    presentRollNumbers.size],
+    ];
+
+    for (const [label, value] of infoRows) {
+      rn++;
+      ws.getRow(rn).height = 20;
+      ws.mergeCells(`A${rn}:B${rn}`);
+      ws.mergeCells(`C${rn}:E${rn}`);
+
+      const lCell = ws.getCell(`A${rn}`);
+      const vCell = ws.getCell(`C${rn}`);
+      lCell.value = label;
+      vCell.value = value;
+
+      styleCell(lCell, { bg: 'FFDBEAFE', fg: 'FF1E3A8A', bold: true, border: true, indent: 1 });
+      styleCell(vCell, { bg: 'FFF8FAFC', fg: 'FF1F2937', border: true, indent: 1 });
+      // Apply border to the B and D/E cells of the merged ranges too
+      ws.getCell(`B${rn}`).border = thinBorder;
+      ws.getCell(`D${rn}`).border = thinBorder;
+      ws.getCell(`E${rn}`).border = thinBorder;
+    }
+
+    // ── Gap ────────────────────────────────────────────────────────────────────
+    rn++;
+    ws.getRow(rn).height = 12;
+
+    // ── Section header ─────────────────────────────────────────────────────────
+    rn++;
+    ws.mergeCells(`A${rn}:E${rn}`);
+    ws.getRow(rn).height = 26;
+    const secCell = ws.getCell(`A${rn}`);
+    secCell.value = 'STUDENT ATTENDANCE LIST';
+    styleCell(secCell, { bg: 'FF1E40AF', fg: 'FFFFFFFF', bold: true, size: 11, alignH: 'center' });
+
+    // ── Table header ───────────────────────────────────────────────────────────
+    rn++;
+    ws.getRow(rn).height = 22;
+    const headers = ['S.No', 'Roll No', 'Student Name', 'Timetable', 'Status'];
+    const headerCols = ['A', 'B', 'C', 'D', 'E'];
+    headers.forEach((h, i) => {
+      const cell = ws.getCell(`${headerCols[i]}${rn}`);
+      cell.value = h;
+      styleCell(cell, { bg: 'FF2563EB', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
+    });
+
+    // ── Student data rows ──────────────────────────────────────────────────────
+    if (allStudents.length === 0) {
+      rn++;
+      ws.getRow(rn).height = 20;
+      ws.mergeCells(`A${rn}:E${rn}`);
+      const emptyCell = ws.getCell(`A${rn}`);
+      emptyCell.value = 'No matching students found in Master Data for this session.';
+      styleCell(emptyCell, { bg: 'FFFFF7ED', fg: 'FFB45309', alignH: 'center', border: true });
+      ws.getCell(`B${rn}`).border = thinBorder;
+      ws.getCell(`C${rn}`).border = thinBorder;
+      ws.getCell(`D${rn}`).border = thinBorder;
+      ws.getCell(`E${rn}`).border = thinBorder;
+    } else {
+      allStudents.forEach((student, idx) => {
+        rn++;
+        ws.getRow(rn).height = 18;
+        const isEven = idx % 2 === 1;
+        const rowBg  = isEven ? 'FFEFF6FF' : 'FFFFFFFF';
+        const values = [idx + 1, student.rollNumber, student.name, student.timetable || '', 'P'];
+        values.forEach((val, ci) => {
+          const cell = ws.getCell(`${headerCols[ci]}${rn}`);
+          cell.value = val;
+          styleCell(cell, {
+            bg:     rowBg,
+            fg:     'FF1F2937',
+            border: true,
+            alignH: ci === 0 || ci === 4 ? 'center' : 'left',
+            indent: ci === 0 || ci === 4 ? 0 : 1,
+          });
+        });
+      });
+    }
+
+    // ── Generate buffer ────────────────────────────────────────────────────────
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    // ── File name ──────────────────────────────────────────────────────────────
     const rawName = this._buildSessionFileName({
-      topic:           session.topic,
+      topic:            session.topic || this._deriveTopicFromSubject(session.subject?.name),
       academicYearName: session.academicYear?.name,
-      date:            session.date,
-      roomName:        session.room?.name,
+      date:             session.date,
+      roomName:         session.room?.name,
     });
     const fileName = `${rawName.replace(/[\\/?*[\]:]/g, '_')}.xlsx`;
 
@@ -469,10 +614,15 @@ class AdminSessionReportService {
       ? null
       : topic;
 
-    const where = {
-      date: { gte: dayStart, lte: dayEnd },
-      topic: normTopic,
-    };
+    const where = { date: { gte: dayStart, lte: dayEnd } };
+    if (normTopic !== null) {
+      where.OR = [
+        { topic: normTopic },
+        { topic: null, subject: { name: { contains: normTopic, mode: 'insensitive' } } },
+      ];
+    } else {
+      where.topic = null;
+    }
     if (academicYearId && academicYearId !== 'null' && academicYearId !== 'undefined') {
       where.academicYearId = academicYearId;
     }
@@ -494,7 +644,12 @@ class AdminSessionReportService {
     const skip  = (Math.max(1, page) - 1) * limit;
     const where = {};
 
-    if (topic && topic !== 'All') where.topic = topic;
+    if (topic && topic !== 'All') {
+      where.OR = [
+        { topic: { contains: topic, mode: 'insensitive' } },
+        { subject: { name: { contains: topic, mode: 'insensitive' } } },
+      ];
+    }
     if (date) {
       const d        = new Date(date);
       const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
@@ -529,7 +684,8 @@ class AdminSessionReportService {
       const d       = new Date(s.date);
       const pad     = (n) => n.toString().padStart(2, '0');
       const dateStr = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
-      const name    = `ES-${s.topic || 'Session'}(${s.academicYear?.name || 'All Years'},${dateStr},${s.room?.name || 'N/A'})`;
+      const topicDisplay = s.topic || this._deriveTopicFromSubject(s.subject?.name) || 'Session';
+      const name    = `ES-${topicDisplay}(${s.academicYear?.name || 'All Years'},${dateStr},${s.room?.name || 'N/A'})`;
       return name.toLowerCase().includes(searchLower);
     });
 

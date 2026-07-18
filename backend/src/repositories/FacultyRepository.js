@@ -13,32 +13,26 @@ class FacultyRepository {
     return prisma.faculty.update({ where: { id }, data });
   }
 
-  // ─── Paginated browse (no search) ────────────────────────────────────────
-  async findAll(filters = {}, skip = 0, take = 50) {
+  _buildFiltersWhere(filters = {}) {
     const where = {};
     if (filters.isActive !== undefined) where.isActive = filters.isActive;
+    if (filters.role)                   where.role     = filters.role;
+    return where;
+  }
 
+  // ─── Paginated browse (no search) ────────────────────────────────────────
+  async findAll(filters = {}, skip = 0, take = 50) {
     return prisma.faculty.findMany({
-      where,
+      where: this._buildFiltersWhere(filters),
       skip,
       take,
       orderBy: { facultyId: 'asc' },
-      select: {
-        id: true,
-        facultyId: true,
-        name: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        lastLoginAt: true,
-      },
+      select: { id: true, facultyId: true, name: true, role: true, isActive: true, createdAt: true, lastLoginAt: true },
     });
   }
 
   async count(filters = {}) {
-    const where = {};
-    if (filters.isActive !== undefined) where.isActive = filters.isActive;
-    return prisma.faculty.count({ where });
+    return prisma.faculty.count({ where: this._buildFiltersWhere(filters) });
   }
 
   // ─── Paginated search (PostgreSQL: mode:'insensitive' for case-insensitive) ──
@@ -99,20 +93,22 @@ class FacultyRepository {
     return prisma.faculty.delete({ where: { id } });
   }
 
-  // ─── Bulk replace via Excel ───────────────────────────────────────────────
-  async replaceFaculty(facultyData) {
-    return prisma.$transaction(async (tx) => {
-      // Delete all existing faculty first (cascade removes sessions/timetable)
-      await tx.faculty.deleteMany({});
-
-      // Insert the new batch
-      const result = await tx.faculty.createMany({
-        data: facultyData,
-        skipDuplicates: true,
-      });
-
-      return result.count;
+  // ─── Additive upload via Excel (keeps existing records) ──────────────────
+  async upsertFaculty(facultyData) {
+    // Find which Employee IDs already exist in one query
+    const incomingIds = facultyData.map((f) => f.facultyId);
+    const existing = await prisma.faculty.findMany({
+      where: { facultyId: { in: incomingIds } },
+      select: { facultyId: true },
     });
+    const existingIds = new Set(existing.map((f) => f.facultyId));
+
+    // Only insert genuinely new faculty — existing accounts are left untouched
+    const newFaculty = facultyData.filter((f) => !existingIds.has(f.facultyId));
+    if (newFaculty.length === 0) return { count: 0, newFaculty: [] };
+
+    await prisma.faculty.createMany({ data: newFaculty, skipDuplicates: true });
+    return { count: newFaculty.length, newFaculty };
   }
 }
 

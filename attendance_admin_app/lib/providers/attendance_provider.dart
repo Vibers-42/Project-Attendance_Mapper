@@ -106,6 +106,7 @@ class AttendanceProvider with ChangeNotifier {
         if (sessionTime != null && sessionTime.isNotEmpty) 'sessionTime': sessionTime,
         if (subject != null && subject.isNotEmpty) 'subject': subject,
         if (year != null && year.isNotEmpty) 'year': year,
+        if (roomNumber.isNotEmpty) 'roomNumber': roomNumber,
       };
       final sessionModel = await _sessionRepository.createSession(sessionData);
 
@@ -216,14 +217,14 @@ class AttendanceProvider with ChangeNotifier {
 
   // Returns a pattern locked to the session's selected academic year.
   // B1 = regular (entered that year), B[2-7] = lateral entry (one year ahead).
-  // Second Year  → 25B1 (2025 regular) or 26B[2-7] (2026 lateral entry)
-  // Third Year   → 24B1 (2024 regular) or 25B[2-7] (2025 lateral entry)
+  // 2nd Year → 25B1 (2025 regular) or 26B[2-7] (2026 lateral entry)
+  // 3rd Year → 24B1 (2024 regular) or 25B[2-7] (2025 lateral entry)
   // No year set  → any 2nd/3rd year AI roll
   RegExp get _validRollPattern {
     switch (_year) {
-      case 'Second Year':
+      case '2nd Year':
         return RegExp(r'^(25B1|26B[2-7])1AI\d{3}$');
-      case 'Third Year':
+      case '3rd Year':
         return RegExp(r'^(24B1|25B[2-7])1AI\d{3}$');
       default:
         return RegExp(r'^(24B1|25B[1-7]|26B[2-7])1AI\d{3}$');

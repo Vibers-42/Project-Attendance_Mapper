@@ -358,7 +358,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   String? _selectedSubject;
   DateTime? _selectedDate;
 
-  static const List<String> _years = ['Second Year', 'Third Year'];
+  static const List<String> _years = ['2nd Year', '3rd Year'];
   static const List<String> _subjects = [
     'Employability Skills - Aptitude',
     'Employability Skills - Soft Skills',
@@ -370,7 +370,10 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
     final filters =
         Provider.of<AttendanceHistoryProvider>(context, listen: false)
             .activeFilters;
-    _selectedYear = filters['year'] as String?;
+    String? rawYear = filters['year'] as String?;
+    if (rawYear == 'Second Year') rawYear = '2nd Year';
+    if (rawYear == 'Third Year') rawYear = '3rd Year';
+    _selectedYear = rawYear;
     _selectedSubject = filters['subject'] as String?;
     final dateStr = filters['startDate'] as String?;
     if (dateStr != null) _selectedDate = DateTime.tryParse(dateStr);

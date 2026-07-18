@@ -11,7 +11,8 @@ class AdminStudentController {
     const query = req.query.q || '';
     const filters = {};
 
-    if (req.query.status) filters.status = req.query.status;
+    if (req.query.status)       filters.status       = req.query.status;
+    if (req.query.academicYear) filters.academicYear = req.query.academicYear;
 
     const result = await StudentMasterDataService.getStudents(filters, page, limit, query);
 
@@ -58,7 +59,7 @@ class AdminStudentController {
     });
   }
 
-  // POST /admin/students/upload — bulk replace via Excel
+  // POST /admin/students/upload — additive bulk upload via Excel
   async uploadStudents(req, res) {
     if (!req.file) {
       throw new BadRequestError('No file uploaded.');
@@ -68,7 +69,11 @@ class AdminStudentController {
 
     return sendSuccess(res, {
       message: result.message,
-      data: { insertedCount: result.insertedCount },
+      data: {
+        insertedCount: result.insertedCount,
+        skippedCount: result.skippedCount,
+        totalInFile: result.totalInFile,
+      },
     });
   }
 

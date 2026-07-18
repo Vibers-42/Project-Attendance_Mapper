@@ -115,23 +115,32 @@ class FacultyMasterDataService {
   }
 
   /**
-   * Bulk-replace all faculty from an Excel file.
-   * Each faculty gets password = bcrypt('webcap').
+   * Additive upload from Excel — keeps existing faculty accounts unchanged.
+   * New faculty get default password 'webcap'. Returns credentials for the admin.
    */
   async uploadFaculty(fileBuffer) {
     const parsedFaculty = parseFacultyExcel(fileBuffer);
-    const passwordHash = await hashPassword(DEFAULT_PASSWORD);
+    const passwordHash  = await hashPassword(DEFAULT_PASSWORD);
 
     const facultyWithPasswords = parsedFaculty.map((f) => ({
       ...f,
       password: passwordHash,
     }));
 
-    const insertedCount = await FacultyRepository.replaceFaculty(facultyWithPasswords);
+    const { count, newFaculty } = await FacultyRepository.upsertFaculty(facultyWithPasswords);
+    const skippedCount = parsedFaculty.length - count;
 
     return {
-      insertedCount,
-      message: `Successfully replaced Faculty Master Data with ${insertedCount} records.`,
+      insertedCount: count,
+      skippedCount,
+      newFaculty: newFaculty.map((f) => ({
+        facultyId: f.facultyId,
+        name:      f.name,
+        password:  DEFAULT_PASSWORD,
+      })),
+      message: count > 0
+        ? `${count} new faculty added. ${skippedCount} already existed and were skipped.`
+        : `All ${skippedCount} faculty already exist — no new accounts created.`,
     };
   }
 }

@@ -12,6 +12,7 @@ class AdminFacultyController {
     const filters = {};
 
     if (req.query.isActive !== undefined) filters.isActive = req.query.isActive === 'true';
+    if (req.query.role)                   filters.role     = req.query.role;
 
     const result = await FacultyMasterDataService.getFaculty(filters, page, limit, query);
 
@@ -55,7 +56,7 @@ class AdminFacultyController {
     });
   }
 
-  // POST /admin/faculty/upload — bulk replace via Excel
+  // POST /admin/faculty/upload — additive Excel upload (existing records are kept)
   async uploadFaculty(req, res) {
     if (!req.file) {
       throw new BadRequestError('No file uploaded.');
@@ -65,7 +66,11 @@ class AdminFacultyController {
 
     return sendSuccess(res, {
       message: result.message,
-      data: { insertedCount: result.insertedCount },
+      data: {
+        insertedCount: result.insertedCount,
+        skippedCount:  result.skippedCount,
+        newFaculty:    result.newFaculty,
+      },
     });
   }
 

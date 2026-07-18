@@ -4,8 +4,7 @@ import React, { useState } from 'react';
 import { Navbar } from '@/features/dashboard/components/Navbar';
 import { WorkbookTable } from '@/features/workbooks/components/WorkbookTable';
 import { SessionTable } from '@/features/workbooks/components/SessionTable';
-import { Button } from '@/components/ui/button';
-import { ArrowLeft, CalendarCheck, BookOpen, LayoutList } from 'lucide-react';
+import { ChevronLeft, CalendarCheck, BookOpen, LayoutList } from 'lucide-react';
 import Link from 'next/link';
 
 type TabId = 'workbooks' | 'sessions';
@@ -34,29 +33,29 @@ export default function AttendanceReportsPage() {
 
       <main className="flex-1 container mx-auto px-4 sm:px-8 py-8">
 
-        {/* ── Page Header ── */}
-        <div className="mb-6">
-          <Button
-            asChild variant="ghost" size="sm"
-            className="w-fit -ml-3 mb-3 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+        {/* Page header */}
+        <div className="mb-7">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors mb-4"
           >
-            <Link href="/dashboard" className="gap-2">
-              <ArrowLeft className="w-4 h-4" />
-              Back to Dashboard
-            </Link>
-          </Button>
+            <ChevronLeft className="w-4 h-4" />
+            Dashboard
+          </Link>
 
-          <div className="flex items-center gap-3 mb-1">
-            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-              <CalendarCheck className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+          <div className="flex items-center gap-4">
+            <div className="w-11 h-11 rounded-xl bg-violet-50 dark:bg-violet-900/20 flex items-center justify-center shrink-0">
+              <CalendarCheck className="w-5 h-5 text-violet-600 dark:text-violet-400" />
             </div>
-            <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-              Attendance Reports
-            </h1>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+                Attendance Reports
+              </h1>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 max-w-2xl">
+                View and download attendance workbooks. Switch between the consolidated workbook view and the individual session view.
+              </p>
+            </div>
           </div>
-          <p className="text-zinc-500 dark:text-zinc-400 ml-14 max-w-2xl">
-            View and download attendance workbooks. Switch between the consolidated workbook view and the individual session view.
-          </p>
         </div>
 
         {/* ── Tab Navigation ── */}

@@ -38,7 +38,7 @@ class AttendanceQueryService {
     // B1 = regular, B[2-7] = lateral entry (one year ahead of their batch).
     // Second Year: 25B1 (2025 regular) + 26B[2-7] (2026 lateral entry)
     // Third Year:  24B1 (2024 regular) + 25B[2-7] (2025 lateral entry)
-    if (queryParams.year === 'Second Year') {
+    if (queryParams.year === '2nd Year') {
       where.records = {
         some: {
           OR: [
@@ -52,7 +52,7 @@ class AttendanceQueryService {
           ],
         },
       };
-    } else if (queryParams.year === 'Third Year') {
+    } else if (queryParams.year === '3rd Year') {
       where.records = {
         some: {
           OR: [

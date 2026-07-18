@@ -145,7 +145,13 @@ export const sessionReportService = {
     const pad = (n: number) => n.toString().padStart(2, '0');
     const d   = new Date(session.date);
     const dateStr = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
-    let fileName = `ES-${session.topic || 'Session'}(${session.academicYear?.name || 'All Years'},${dateStr},${session.room?.name || 'NoRoom'}).xlsx`;
+    const topicFallback = session.topic || (() => {
+      const sn = session.subject?.name;
+      if (!sn) return 'Session';
+      const idx = sn.lastIndexOf(' - ');
+      return idx !== -1 ? sn.slice(idx + 3).trim() : sn.trim();
+    })();
+    let fileName = `ES-${topicFallback}(${session.academicYear?.name || 'All Years'},${dateStr},${session.room?.name || 'NoRoom'}).xlsx`;
     const match  = contentDisposition.match(/filename="([^"]+)"/);
     if (match?.[1]) fileName = match[1];
 

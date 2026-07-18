@@ -8,8 +8,9 @@ const startSessionSchema = Joi.object({
   roomId:        Joi.string().uuid().optional(),
 
   // Text-based names from the mobile app — resolved to IDs in the service layer
-  year:    Joi.string().optional(),
-  subject: Joi.string().optional(),
+  year:       Joi.string().optional(),
+  subject:    Joi.string().optional(),
+  roomNumber: Joi.string().allow('').optional(),
 
   // Session metadata
   sessionTime:          Joi.string().optional(),

@@ -9,13 +9,19 @@ async function main() {
   // ==========================================
   // ACADEMIC YEARS
   // ==========================================
-  const academicYears = ['Second Year', 'Third Year'];
-  for (const name of academicYears) {
-    await prisma.academicYear.upsert({
-      where: { name },
-      update: {},
-      create: { name },
-    });
+  // Rename legacy "Second Year"/"Third Year" records in-place so existing
+  // sessions (linked by academicYearId) remain correctly associated.
+  const yearMigrations = [
+    { from: 'Second Year', to: '2nd Year' },
+    { from: 'Third Year',  to: '3rd Year'  },
+  ];
+  for (const { from, to } of yearMigrations) {
+    const legacy = await prisma.academicYear.findUnique({ where: { name: from } });
+    if (legacy) {
+      await prisma.academicYear.update({ where: { name: from }, data: { name: to } });
+    } else {
+      await prisma.academicYear.upsert({ where: { name: to }, update: {}, create: { name: to } });
+    }
   }
   console.log('✅ Seeded AcademicYear records.');
 
@@ -117,16 +123,21 @@ async function main() {
     { serialNo: 14, rollNumber: '24B11AI400', name: 'SINGAM MAHIDAR', timetable: 'T4(CA2)', barcode: 'BC24B11AI400' },
   ];
 
+  // Look up academic year IDs so students can be linked correctly
+  const thirdYear  = await prisma.academicYear.findUnique({ where: { name: '3rd Year' } });
+  const secondYear = await prisma.academicYear.findUnique({ where: { name: '2nd Year' } });
+
   for (const student of demoStudents) {
+    // Link by roll-number prefix: 24B → 3rd Year, 25B → 2nd Year
+    const acYear = student.rollNumber.startsWith('24B') ? thirdYear
+                 : student.rollNumber.startsWith('25B') ? secondYear
+                 : null;
+    const yearLink = acYear ? { academicYearId: acYear.id } : {};
+
     await prisma.student.upsert({
-      where: { rollNumber: student.rollNumber },
-      update: {
-        name: student.name,
-        timetable: student.timetable,
-        barcode: student.barcode,
-        serialNo: student.serialNo
-      },
-      create: student
+      where:  { rollNumber: student.rollNumber },
+      update: { name: student.name, timetable: student.timetable, barcode: student.barcode, serialNo: student.serialNo, ...yearLink },
+      create: { ...student, ...yearLink },
     });
   }
 

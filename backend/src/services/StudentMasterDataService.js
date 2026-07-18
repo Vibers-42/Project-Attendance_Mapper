@@ -13,8 +13,8 @@ class StudentMasterDataService {
 
     if (query && query.trim().length > 0) {
       [students, total] = await Promise.all([
-        StudentRepository.searchPaginated(query.trim(), skip, limit),
-        StudentRepository.searchCount(query.trim()),
+        StudentRepository.searchPaginated(query.trim(), filters, skip, limit),
+        StudentRepository.searchCount(query.trim(), filters),
       ]);
     } else {
       [students, total] = await Promise.all([
@@ -99,10 +99,16 @@ class StudentMasterDataService {
 
   async uploadStudents(fileBuffer) {
     const parsedStudents = parseStudentExcel(fileBuffer);
-    const insertedCount = await StudentRepository.replaceStudents(parsedStudents);
+    const { count, newStudents } = await StudentRepository.upsertStudents(parsedStudents);
+    const skippedCount = parsedStudents.length - count;
+
     return {
-      insertedCount,
-      message: `Successfully replaced Master Data with ${insertedCount} students.`,
+      insertedCount: count,
+      skippedCount,
+      totalInFile: parsedStudents.length,
+      message: count > 0
+        ? `${count} new student(s) added. ${skippedCount} already existed and were skipped.`
+        : `All ${skippedCount} student(s) already exist — no new records created.`,
     };
   }
 }

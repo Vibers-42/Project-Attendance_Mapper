@@ -108,26 +108,35 @@ function RoleBadge({ role }: { role: Faculty['role'] }) {
   );
 }
 
+const ROLE_OPTIONS = [
+  { value: 'All',         label: 'All'         },
+  { value: 'FACULTY',     label: 'Faculty'     },
+  { value: 'SUPER_ADMIN', label: 'Super Admin' },
+];
+
 // ─── Main component ─────────────────────────────────────────────────────────────
 export function FacultyTable() {
-  const [page, setPage]           = useState(1);
-  const [search, setSearch]       = useState('');
-  const [jumpValue, setJumpValue] = useState('');
-  const [addOpen, setAddOpen]     = useState(false);
-  const [delTarget, setDelTarget] = useState<Faculty | null>(null);
+  const [page, setPage]             = useState(1);
+  const [search, setSearch]         = useState('');
+  const [roleFilter, setRoleFilter] = useState('All');
+  const [jumpValue, setJumpValue]   = useState('');
+  const [addOpen, setAddOpen]       = useState(false);
+  const [delTarget, setDelTarget]   = useState<Faculty | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
-  const [debouncedSearch]         = useDebounce(search, 250);
+  const [debouncedSearch]           = useDebounce(search, 250);
 
   const clearSearch = useCallback(() => { setSearch(''); setPage(1); setJumpValue(''); }, []);
   const onSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value); setPage(1); setJumpValue('');
   }, []);
+  const onRoleChange = useCallback((val: string) => { setRoleFilter(val); setPage(1); setJumpValue(''); }, []);
 
   const { data, isLoading, isFetching, isError, error } = useQuery({
-    queryKey: ['faculty', page, debouncedSearch],
-    queryFn:  () => facultyService.getFaculty(page, PAGE_SIZE, debouncedSearch),
+    queryKey: ['faculty', page, debouncedSearch, roleFilter],
+    queryFn:  () => facultyService.getFaculty(page, PAGE_SIZE, debouncedSearch, roleFilter),
     placeholderData: (prev) => prev,
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
     retry: 2,
   });
 
@@ -159,24 +168,46 @@ export function FacultyTable() {
 
         {/* ── Toolbar ──────────────────────────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-          <div className="relative w-full sm:w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
-            <Input
-              id="faculty-search"
-              placeholder="Search by Employee ID or Name…"
-              value={search}
-              onChange={onSearchChange}
-              className="pl-9 pr-9 bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 focus-visible:ring-blue-500"
-            />
-            {search && (
-              <button
-                onClick={clearSearch}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
-                aria-label="Clear search"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+          <div className="flex flex-col sm:flex-row gap-3 flex-1 min-w-0">
+            {/* Search */}
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+              <Input
+                id="faculty-search"
+                placeholder="Search by Employee ID or Name…"
+                value={search}
+                onChange={onSearchChange}
+                className="pl-9 pr-9 bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 focus-visible:ring-blue-500"
+              />
+              {search && (
+                <button
+                  onClick={clearSearch}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+                  aria-label="Clear search"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Role filter */}
+            <div className="flex items-center gap-2 shrink-0">
+              {ROLE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => onRoleChange(opt.value)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                    roleFilter === opt.value
+                      ? opt.value === 'SUPER_ADMIN'
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-zinc-50 dark:bg-zinc-950 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">

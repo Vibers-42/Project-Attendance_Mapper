@@ -18,34 +18,28 @@ class StudentRepository {
     });
   }
 
-  async findAll(filters = {}, skip = 0, take = 50) {
+  _buildFiltersWhere(filters = {}) {
     const where = {};
-    if (filters.status) where.status = filters.status;
+    if (filters.status)       where.status       = filters.status;
     if (filters.departmentId) where.departmentId = filters.departmentId;
-    if (filters.semester) where.semester = parseInt(filters.semester);
+    if (filters.semester)     where.semester      = parseInt(filters.semester);
     if (filters.academicYearId) where.academicYearId = filters.academicYearId;
+    if (filters.academicYear)   where.academicYear   = { name: filters.academicYear };
+    return where;
+  }
 
+  async findAll(filters = {}, skip = 0, take = 50) {
     return prisma.student.findMany({
-      where,
+      where: this._buildFiltersWhere(filters),
       skip,
       take,
-      include: {
-        department: true,
-        academicYear: true,
-        section: true,
-      },
+      include: { department: true, academicYear: true, section: true },
       orderBy: { rollNumber: 'asc' },
     });
   }
 
   async count(filters = {}) {
-    const where = {};
-    if (filters.status) where.status = filters.status;
-    if (filters.departmentId) where.departmentId = filters.departmentId;
-    if (filters.semester) where.semester = parseInt(filters.semester);
-    if (filters.academicYearId) where.academicYearId = filters.academicYearId;
-
-    return prisma.student.count({ where });
+    return prisma.student.count({ where: this._buildFiltersWhere(filters) });
   }
 
   /**
@@ -64,23 +58,21 @@ class StudentRepository {
   }
 
   // Paginated search — used by admin student listing when a query is present
-  async searchPaginated(query, skip = 0, take = 50) {
+  async searchPaginated(query, filters = {}, skip = 0, take = 50) {
+    const filterWhere = this._buildFiltersWhere(filters);
     return prisma.student.findMany({
-      where: this._buildSearchWhere(query),
+      where: { ...this._buildSearchWhere(query), ...filterWhere },
       skip,
       take,
-      include: {
-        department: true,
-        academicYear: true,
-        section: true,
-      },
+      include: { department: true, academicYear: true, section: true },
       orderBy: { rollNumber: 'asc' },
     });
   }
 
-  async searchCount(query) {
+  async searchCount(query, filters = {}) {
+    const filterWhere = this._buildFiltersWhere(filters);
     return prisma.student.count({
-      where: this._buildSearchWhere(query),
+      where: { ...this._buildSearchWhere(query), ...filterWhere },
     });
   }
 
@@ -96,19 +88,35 @@ class StudentRepository {
     });
   }
 
-  async replaceStudents(studentsData) {
-    // Perform deletion and insertion in a single transaction
+  /**
+   * Additive upload — only inserts students whose rollNumber does NOT
+   * already exist.  Existing records are left completely untouched.
+   * Returns { count, newStudents } where count is the number of truly new rows.
+   */
+  async upsertStudents(studentsData) {
     return prisma.$transaction(async (tx) => {
-      // 1. Delete all existing students (Cascade will handle AttendanceRecords)
-      await tx.student.deleteMany({});
+      // 1. Fetch all existing rollNumbers in one query
+      const existing = await tx.student.findMany({
+        select: { rollNumber: true },
+      });
+      const existingSet = new Set(existing.map((s) => s.rollNumber));
 
-      // 2. Insert all new students
+      // 2. Filter to only genuinely new students
+      const newStudents = studentsData.filter(
+        (s) => !existingSet.has(s.rollNumber)
+      );
+
+      if (newStudents.length === 0) {
+        return { count: 0, newStudents: [] };
+      }
+
+      // 3. Bulk insert only the new records
       const result = await tx.student.createMany({
-        data: studentsData,
-        skipDuplicates: true,
+        data: newStudents,
+        skipDuplicates: true,   // extra safety net
       });
 
-      return result.count;
+      return { count: result.count, newStudents };
     });
   }
 

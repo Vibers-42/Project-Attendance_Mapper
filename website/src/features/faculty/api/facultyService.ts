@@ -24,10 +24,20 @@ export interface GetFacultyResponse {
   };
 }
 
+export interface NewFacultyCredential {
+  facultyId: string;
+  name: string;
+  password: string;
+}
+
 export interface UploadResponse {
   success: boolean;
   message: string;
-  data: { insertedCount: number };
+  data: {
+    insertedCount: number;
+    skippedCount: number;
+    newFaculty: NewFacultyCredential[];
+  };
 }
 
 export interface AddFacultyPayload {
@@ -46,10 +56,13 @@ export const facultyService = {
    * Unified paginated browse + search.
    * Pass q='' (or omit) to browse all; pass q='...' to filter by Employee ID or Name.
    */
-  getFaculty: async (page = 1, limit = 50, query = ''): Promise<GetFacultyResponse> => {
+  getFaculty: async (page = 1, limit = 50, query = '', role = ''): Promise<GetFacultyResponse> => {
     let url = `/admin/faculty?page=${page}&limit=${limit}`;
     if (query && query.trim().length > 0) {
       url += `&q=${encodeURIComponent(query.trim())}`;
+    }
+    if (role && role !== 'All') {
+      url += `&role=${encodeURIComponent(role)}`;
     }
     const response = await apiClient.get<GetFacultyResponse>(url);
     return response.data;

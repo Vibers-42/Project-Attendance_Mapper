@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { facultyService, Faculty } from '../api/facultyService';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -128,6 +129,7 @@ interface Props {
 
 export function ManageSuperAdminModal({ isOpen, onClose }: Props) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [tab, setTab]               = useState<Tab>('grant');
   const [search, setSearch]         = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -144,9 +146,14 @@ export function ManageSuperAdminModal({ isOpen, onClose }: Props) {
 
   const allFaculty = data?.data ?? [];
 
-  // Split by role
+  // Split by role; exclude the currently logged-in super admin from the revoke list
+  // (prevents self-demotion via the modal)
+  const currentUserFacultyId = user?.employeeId ?? '';
   const regularFaculty   = useMemo(() => allFaculty.filter(f => f.role === 'FACULTY'),      [allFaculty]);
-  const superAdminFaculty = useMemo(() => allFaculty.filter(f => f.role === 'SUPER_ADMIN'), [allFaculty]);
+  const superAdminFaculty = useMemo(
+    () => allFaculty.filter(f => f.role === 'SUPER_ADMIN' && f.facultyId !== currentUserFacultyId),
+    [allFaculty, currentUserFacultyId],
+  );
 
   // Current list based on active tab
   const currentList = tab === 'grant' ? regularFaculty : superAdminFaculty;
@@ -159,6 +166,16 @@ export function ManageSuperAdminModal({ isOpen, onClose }: Props) {
       f.name.toLowerCase().includes(q) || f.facultyId.toLowerCase().includes(q)
     );
   }, [currentList, search]);
+
+  // Cross-tab search hint: count how many are found in the other tab
+  const crossTabCount = useMemo(() => {
+    if (!search.trim()) return 0;
+    const q = search.toLowerCase();
+    const otherList = tab === 'grant' ? superAdminFaculty : regularFaculty;
+    return otherList.filter(f =>
+      f.name.toLowerCase().includes(q) || f.facultyId.toLowerCase().includes(q)
+    ).length;
+  }, [search, tab, regularFaculty, superAdminFaculty]);
 
   // Reset selection when tab changes
   const switchTab = (t: Tab) => { setTab(t); setSelectedIds(new Set()); setSearch(''); };
@@ -345,8 +362,17 @@ export function ManageSuperAdminModal({ isOpen, onClose }: Props) {
                   <>
                     <ShieldCheck className="w-10 h-10 text-zinc-300 dark:text-zinc-700" />
                     <p className="text-sm font-medium">
-                      {search ? `No faculty match "${search}"` : 'All faculty are already Super Admins.'}
+                      {search ? `No regular faculty match "${search}"` : 'All faculty are already Super Admins.'}
                     </p>
+                    {search && crossTabCount > 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        {crossTabCount} match{crossTabCount !== 1 ? 'es' : ''} found in the{' '}
+                        <button className="underline font-medium" onClick={() => switchTab('revoke')}>
+                          Revoke Super Admin
+                        </button>{' '}
+                        tab.
+                      </p>
+                    )}
                   </>
                 ) : (
                   <>
@@ -354,6 +380,15 @@ export function ManageSuperAdminModal({ isOpen, onClose }: Props) {
                     <p className="text-sm font-medium">
                       {search ? `No Super Admins match "${search}"` : 'No Super Admin faculty to revoke.'}
                     </p>
+                    {search && crossTabCount > 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        {crossTabCount} match{crossTabCount !== 1 ? 'es' : ''} found in the{' '}
+                        <button className="underline font-medium" onClick={() => switchTab('grant')}>
+                          Grant Super Admin
+                        </button>{' '}
+                        tab.
+                      </p>
+                    )}
                   </>
                 )}
               </div>

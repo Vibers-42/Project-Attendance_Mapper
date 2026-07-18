@@ -93,9 +93,9 @@ export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps)
           <DialogTitle>Upload Student Master Data</DialogTitle>
           <DialogDescription>
             Upload an Excel file (.xlsx) containing student records. 
-            <strong className="text-red-600 dark:text-red-400 block mt-2">
-              Warning: This will REPLACE all existing Student Master Data!
-            </strong>
+            <span className="text-emerald-600 dark:text-emerald-400 block mt-2 font-medium">
+              New students will be added. Existing records will be kept unchanged.
+            </span>
           </DialogDescription>
         </DialogHeader>
 
@@ -168,11 +168,10 @@ export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps)
           </Button>
           {file && (
             <Button 
-              variant="destructive" 
               onClick={() => uploadMutation.mutate()} 
               disabled={uploadMutation.isPending || !!error}
             >
-              {uploadMutation.isPending ? 'Replacing Data...' : 'Confirm & Replace Data'}
+              {uploadMutation.isPending ? 'Uploading...' : 'Confirm & Upload'}
             </Button>
           )}
         </DialogFooter>

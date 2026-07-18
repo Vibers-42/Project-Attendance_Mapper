@@ -30,6 +30,8 @@ export interface UploadResponse {
   message: string;
   data: {
     insertedCount: number;
+    skippedCount: number;
+    totalInFile: number;
   };
 }
 
@@ -44,10 +46,13 @@ export const studentService = {
    * Paginated list of students.
    * Pass q='' (or omit) to browse all; pass q='...' to filter by roll no or name.
    */
-  getStudents: async (page = 1, limit = 50, query = ''): Promise<GetStudentsResponse> => {
+  getStudents: async (page = 1, limit = 50, query = '', academicYear = ''): Promise<GetStudentsResponse> => {
     let url = `/admin/students?page=${page}&limit=${limit}`;
     if (query && query.trim().length > 0) {
       url += `&q=${encodeURIComponent(query.trim())}`;
+    }
+    if (academicYear && academicYear !== 'All') {
+      url += `&academicYear=${encodeURIComponent(academicYear)}`;
     }
     const response = await apiClient.get<GetStudentsResponse>(url);
     return response.data;
@@ -68,7 +73,8 @@ export const studentService = {
   },
 
   /**
-   * Bulk-replace the entire Student Master Data via an Excel upload.
+   * Additive upload — adds new students from the Excel file while
+   * leaving existing records untouched.  Duplicates are skipped.
    * Required columns: "Roll No" (or alias) + "Student Name" (or alias).
    * "Timetable" column is optional.
    */

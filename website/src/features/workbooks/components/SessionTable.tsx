@@ -162,6 +162,12 @@ function BulkDeleteDialog({ isOpen, count, onClose, onConfirm, isPending }: { is
 const YEAR_OPTIONS  = ['2nd Year', '3rd Year'] as const;
 const TOPIC_OPTIONS = ['All', 'Aptitude', 'Soft Skills'] as const;
 
+function deriveTopicFromSubject(subjectName?: string | null): string | null {
+  if (!subjectName) return null;
+  const idx = subjectName.lastIndexOf(' - ');
+  return idx !== -1 ? subjectName.slice(idx + 3).trim() : subjectName.trim();
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function SessionTable() {
   const queryClient = useQueryClient();
@@ -433,8 +439,9 @@ export function SessionTable() {
                     const pad    = (n: number) => n.toString().padStart(2, '0');
                     const d      = new Date(session.date);
                     const dateStr = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
-                    // Convention: ES-Topic(AcYear,Date,Room) — includes room to uniquely identify each session
-                    const sessionName = `ES-${session.topic || 'Session'}(${session.academicYear?.name || 'All Years'},${dateStr},${session.room?.name || 'N/A'})`;
+                    // Convention: ES-Topic(AcYear,Date,Room) — topic derived from subject when topic field is null
+                    const topicDisplay = session.topic || deriveTopicFromSubject(session.subject?.name) || 'Session';
+                    const sessionName = `ES-${topicDisplay}(${session.academicYear?.name || 'All Years'},${dateStr},${session.room?.name || 'N/A'})`;
                     const isSelected = selectedIds.has(session.id);
 
                     return (
@@ -453,7 +460,7 @@ export function SessionTable() {
                         <td className="px-4 text-sm text-zinc-700 dark:text-zinc-300 truncate" title={session.faculty?.name}>{session.faculty?.name ?? '—'}</td>
                         <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400 truncate">{session.room?.name ?? '—'}</td>
                         <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400 truncate">{session.academicYear?.name ?? '—'}</td>
-                        <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400 truncate">{session.topic ?? '—'}</td>
+                        <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400 truncate">{session.topic ?? deriveTopicFromSubject(session.subject?.name) ?? '—'}</td>
                         <td className="px-4 text-sm text-zinc-500">{dateStr}</td>
                         <td className="px-4 text-center"><StatusBadge status={session.status} /></td>
                         <td className="px-4 text-right">

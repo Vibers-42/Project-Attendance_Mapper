@@ -4,10 +4,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema, LoginFormData } from '../utils/validation';
 import { useLogin } from '../hooks/useLogin';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Loader2 } from 'lucide-react';
 
 export function LoginForm() {
   const loginMutation = useLogin();
@@ -21,8 +21,6 @@ export function LoginForm() {
   });
 
   function onSubmit(values: LoginFormData) {
-    // Current MVP behavior: we pass credentials to the dummy API 
-    // which will always return success.
     loginMutation.mutate({
       employeeId: values.employeeId || '',
       password: values.password || '',
@@ -30,26 +28,33 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-[400px] shadow-md border-zinc-200 dark:border-zinc-800">
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold tracking-tight text-center">
-          Super Admin Login
-        </CardTitle>
-        <CardDescription className="text-center">
-          Enter your employee ID and password to access the dashboard.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <div className="w-full max-w-sm">
+      {/* Heading */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+          Welcome back
+        </h2>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+          Sign in with your Super Admin credentials
+        </p>
+      </div>
+
+      {/* Form card */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-8 shadow-sm">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
             <FormField
               control={form.control}
               name="employeeId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Employee ID</FormLabel>
+                  <FormLabel className="text-zinc-700 dark:text-zinc-300 font-medium">Employee ID</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. EMP123" {...field} />
+                    <Input
+                      placeholder="e.g. EMP123"
+                      className="h-10 bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-700 focus-visible:ring-blue-500"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -60,24 +65,37 @@ export function LoginForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Password</FormLabel>
+                  <FormLabel className="text-zinc-700 dark:text-zinc-300 font-medium">Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} />
+                    <Input
+                      type="password"
+                      placeholder="••••••••"
+                      className="h-10 bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-700 focus-visible:ring-blue-500"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <Button 
-              type="submit" 
-              className="w-full mt-4" 
+
+            <Button
+              type="submit"
+              className="w-full h-10 mt-2 bg-blue-600 hover:bg-blue-700 text-white font-medium"
               disabled={loginMutation.isPending}
             >
-              {loginMutation.isPending ? 'Authenticating...' : 'Sign In'}
+              {loginMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Signing in…
+                </>
+              ) : (
+                'Sign in'
+              )}
             </Button>
           </form>
         </Form>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

@@ -22,7 +22,7 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
   DateTime _selectedDate = DateTime.now();
   bool _initialized = false;
 
-  final List<String> _years = ['Second Year', 'Third Year'];
+  final List<String> _years = ['2nd Year', '3rd Year'];
   final List<String> _subjects = [
     'Employability Skills - Aptitude',
     'Employability Skills - Soft Skills',
@@ -38,7 +38,10 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
       final provider =
           Provider.of<AttendanceProvider>(context, listen: false);
       if (provider.hasActiveSession) {
-        _selectedYear = provider.year;
+        String? rawYear = provider.year;
+        if (rawYear == 'Second Year') rawYear = '2nd Year';
+        if (rawYear == 'Third Year') rawYear = '3rd Year';
+        _selectedYear = rawYear;
         _selectedSubject =
             provider.subject ?? 'Employability Skills - Aptitude';
         _selectedSessionTime = provider.sessionTime;

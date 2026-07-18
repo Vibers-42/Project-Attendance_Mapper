@@ -91,23 +91,27 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+const YEAR_OPTIONS = ['All', '2nd Year', '3rd Year'];
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export function StudentTable() {
-  const [page, setPage]           = useState(1);
-  const [search, setSearch]       = useState('');
-  const [jumpValue, setJumpValue] = useState('');
-  const [addOpen, setAddOpen]     = useState(false);
-  const [delTarget, setDelTarget] = useState<Student | null>(null);
-  const [debouncedSearch]         = useDebounce(search, 250);
+  const [page, setPage]             = useState(1);
+  const [search, setSearch]         = useState('');
+  const [yearFilter, setYearFilter] = useState('All');
+  const [jumpValue, setJumpValue]   = useState('');
+  const [addOpen, setAddOpen]       = useState(false);
+  const [delTarget, setDelTarget]   = useState<Student | null>(null);
+  const [debouncedSearch]           = useDebounce(search, 250);
 
   const clearSearch = useCallback(() => { setSearch(''); setPage(1); setJumpValue(''); }, []);
   const onSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value); setPage(1); setJumpValue('');
   }, []);
+  const onYearChange = useCallback((val: string) => { setYearFilter(val); setPage(1); setJumpValue(''); }, []);
 
   const { data, isLoading, isFetching, isError, error } = useQuery({
-    queryKey: ['students', page, debouncedSearch],
-    queryFn: () => studentService.getStudents(page, PAGE_SIZE, debouncedSearch),
+    queryKey: ['students', page, debouncedSearch, yearFilter],
+    queryFn: () => studentService.getStudents(page, PAGE_SIZE, debouncedSearch, yearFilter),
     placeholderData: (prev) => prev,
     staleTime: 30_000,
     retry: 2,
@@ -140,20 +144,40 @@ export function StudentTable() {
 
         {/* ── Toolbar ─────────────────────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-          <div className="relative w-full sm:w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
-            <Input
-              id="student-search"
-              placeholder="Search by Roll No or Name…"
-              value={search}
-              onChange={onSearchChange}
-              className="pl-9 pr-9 bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 focus-visible:ring-blue-500"
-            />
-            {search && (
-              <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors" aria-label="Clear search">
-                <X className="w-4 h-4" />
-              </button>
-            )}
+          <div className="flex flex-col sm:flex-row gap-3 flex-1 min-w-0">
+            {/* Search */}
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+              <Input
+                id="student-search"
+                placeholder="Search by Roll No or Name…"
+                value={search}
+                onChange={onSearchChange}
+                className="pl-9 pr-9 bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 focus-visible:ring-blue-500"
+              />
+              {search && (
+                <button onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors" aria-label="Clear search">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Year filter */}
+            <div className="flex items-center gap-2 shrink-0">
+              {YEAR_OPTIONS.map((yr) => (
+                <button
+                  key={yr}
+                  onClick={() => onYearChange(yr)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                    yearFilter === yr
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-zinc-50 dark:bg-zinc-950 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
+                  }`}
+                >
+                  {yr}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
@@ -162,7 +186,7 @@ export function StudentTable() {
               <span className="text-sm text-zinc-500 font-medium whitespace-nowrap">
                 {total === 0
                   ? 'No records'
-                  : debouncedSearch
+                  : debouncedSearch || yearFilter !== 'All'
                   ? `${total.toLocaleString()} match${total !== 1 ? 'es' : ''}`
                   : `${from}–${to} of ${total.toLocaleString()} records`}
               </span>

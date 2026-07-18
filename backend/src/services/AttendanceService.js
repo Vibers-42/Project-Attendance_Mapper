@@ -12,18 +12,35 @@ class AttendanceService {
     // Resolve text names → UUIDs (mobile app sends human-readable labels)
     let subjectId = data.subjectId;
     let academicYearId = data.academicYearId;
+    let derivedTopic = null;
 
     if (data.subject && !subjectId) {
       const found = await prisma.subject.findFirst({ where: { name: data.subject } });
-      subjectId = found?.id;
+      if (found) {
+        subjectId = found.id;
+      } else if (!data.topic) {
+        // Subject not yet in DB — derive short topic name so it isn't lost
+        const idx = data.subject.lastIndexOf(' - ');
+        derivedTopic = idx !== -1 ? data.subject.slice(idx + 3).trim() : data.subject.trim();
+      }
     }
     if (data.year && !academicYearId) {
       const found = await prisma.academicYear.findFirst({ where: { name: data.year } });
       academicYearId = found?.id;
     }
 
+    let roomId = data.roomId;
+    if (data.roomNumber && data.roomNumber.trim() && !roomId) {
+      const room = await prisma.room.upsert({
+        where:  { name: data.roomNumber.trim() },
+        update: {},
+        create: { name: data.roomNumber.trim() },
+      });
+      roomId = room.id;
+    }
+
     // Strip frontend-only text fields that have no direct DB column
-    const { subject, year, subjectId: _s, academicYearId: _a, ...rest } = data;
+    const { subject, year, roomNumber: _r, subjectId: _s, academicYearId: _a, ...rest } = data;
 
     const sessionData = {
       ...rest,
@@ -32,6 +49,9 @@ class AttendanceService {
       date: data.date ? new Date(data.date) : new Date(),
       ...(subjectId && { subjectId }),
       ...(academicYearId && { academicYearId }),
+      ...(roomId && { roomId }),
+      // Store derived topic only when no explicit topic was provided and subject wasn't in DB
+      ...(derivedTopic && !rest.topic && { topic: derivedTopic }),
     };
 
     return sessionRepository.create(sessionData);
@@ -81,13 +101,24 @@ class AttendanceService {
       academicYearId = found?.id;
     }
 
+    let roomId = data.roomId;
+    if (data.roomNumber && data.roomNumber.trim() && !roomId) {
+      const room = await prisma.room.upsert({
+        where:  { name: data.roomNumber.trim() },
+        update: {},
+        create: { name: data.roomNumber.trim() },
+      });
+      roomId = room.id;
+    }
+
     // Strip restricted and frontend-only fields
-    const { status, facultyId: _, date, subject, year, subjectId: _s, academicYearId: _a, ...updateData } = data;
+    const { status, facultyId: _, date, subject, year, roomNumber: _r, subjectId: _s, academicYearId: _a, ...updateData } = data;
 
     return sessionRepository.update(sessionId, {
       ...updateData,
       ...(subjectId && { subjectId }),
       ...(academicYearId && { academicYearId }),
+      ...(roomId && { roomId }),
     });
   }
 

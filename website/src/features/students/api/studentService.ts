@@ -46,13 +46,13 @@ export const studentService = {
    * Paginated list of students.
    * Pass q='' (or omit) to browse all; pass q='...' to filter by roll no or name.
    */
-  getStudents: async (page = 1, limit = 50, query = '', academicYear = ''): Promise<GetStudentsResponse> => {
+  getStudents: async (page = 1, limit = 50, query = '', batch = ''): Promise<GetStudentsResponse> => {
     let url = `/admin/students?page=${page}&limit=${limit}`;
     if (query && query.trim().length > 0) {
       url += `&q=${encodeURIComponent(query.trim())}`;
     }
-    if (academicYear && academicYear !== 'All') {
-      url += `&academicYear=${encodeURIComponent(academicYear)}`;
+    if (batch) {
+      url += `&batch=${encodeURIComponent(batch)}`;
     }
     const response = await apiClient.get<GetStudentsResponse>(url);
     return response.data;

@@ -24,7 +24,7 @@ const COLS = [
   { key: 'action', label: 'Action',        width: 68,   align: 'right' },
 ] as const;
 
-const PAGE_SIZE    = 200;
+const PAGE_SIZE    = 50;
 const ROW_HEIGHT   = 48;
 const VISIBLE_ROWS = 14;
 const CONTAINER_H  = ROW_HEIGHT * VISIBLE_ROWS; // 672 px
@@ -91,12 +91,28 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-
+// ─── Dynamic year options based on roll number prefix ─────────────────────────
+// Roll numbers start with a 2-digit admission year (e.g., 24B11AI005 → admitted 2024).
+// We compute the "year of study" relative to the current academic year.
+function buildYearOptions(): { label: string; batch: string }[] {
+  const now = new Date();
+  // Indian academic year starts ~June. If before June, we're still in the prev year.
+  const academicStartYear = now.getMonth() >= 5 ? now.getFullYear() : now.getFullYear() - 1;
+  const options: { label: string; batch: string }[] = [{ label: 'All', batch: '' }];
+  for (let yr = 1; yr <= 4; yr++) {
+    const admissionYear = academicStartYear - yr + 1;
+    const prefix = String(admissionYear).slice(-2); // e.g. 2025 → "25"
+    options.push({ label: `${yr}${yr === 1 ? 'st' : yr === 2 ? 'nd' : yr === 3 ? 'rd' : 'th'} Year`, batch: prefix });
+  }
+  return options;
+}
+const YEAR_OPTIONS = buildYearOptions();
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export function StudentTable() {
   const [page, setPage]             = useState(1);
   const [search, setSearch]         = useState('');
+  const [batchFilter, setBatchFilter] = useState('');
   const [jumpValue, setJumpValue]   = useState('');
   const [addOpen, setAddOpen]       = useState(false);
   const [delTarget, setDelTarget]   = useState<Student | null>(null);
@@ -106,10 +122,11 @@ export function StudentTable() {
   const onSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value); setPage(1); setJumpValue('');
   }, []);
+  const onBatchChange = useCallback((batch: string) => { setBatchFilter(batch); setPage(1); setJumpValue(''); }, []);
 
   const { data, isLoading, isFetching, isError, error } = useQuery({
-    queryKey: ['students', page, debouncedSearch],
-    queryFn: () => studentService.getStudents(page, PAGE_SIZE, debouncedSearch),
+    queryKey: ['students', page, debouncedSearch, batchFilter],
+    queryFn: () => studentService.getStudents(page, PAGE_SIZE, debouncedSearch, batchFilter),
     placeholderData: (prev) => prev,
     staleTime: 30_000,
     retry: 2,
@@ -160,6 +177,22 @@ export function StudentTable() {
               )}
             </div>
 
+            {/* Year filter */}
+            <div className="flex items-center gap-2 shrink-0">
+              {YEAR_OPTIONS.map((opt) => (
+                <button
+                  key={opt.label}
+                  onClick={() => onBatchChange(opt.batch)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                    batchFilter === opt.batch
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-zinc-50 dark:bg-zinc-950 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
@@ -168,7 +201,7 @@ export function StudentTable() {
               <span className="text-sm text-zinc-500 font-medium whitespace-nowrap">
                 {total === 0
                   ? 'No records'
-                  : debouncedSearch
+                  : debouncedSearch || batchFilter
                   ? `${total.toLocaleString()} match${total !== 1 ? 'es' : ''}`
                   : `${from}–${to} of ${total.toLocaleString()} records`}
               </span>

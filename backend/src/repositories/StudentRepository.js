@@ -25,6 +25,7 @@ class StudentRepository {
     if (filters.semester)     where.semester      = parseInt(filters.semester);
     if (filters.academicYearId) where.academicYearId = filters.academicYearId;
     if (filters.academicYear)   where.academicYear   = { name: filters.academicYear };
+    if (filters.batch)          where.rollNumber     = { startsWith: filters.batch };
     return where;
   }
 

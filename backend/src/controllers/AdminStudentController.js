@@ -9,10 +9,12 @@ class AdminStudentController {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
     const query = req.query.q || '';
+    const batch = req.query.batch || '';   // e.g. "25" → filter rollNumber starting with "25"
     const filters = {};
 
     if (req.query.status)       filters.status       = req.query.status;
     if (req.query.academicYear) filters.academicYear = req.query.academicYear;
+    if (batch)                  filters.batch        = batch;
 
     const result = await StudentMasterDataService.getStudents(filters, page, limit, query);
 

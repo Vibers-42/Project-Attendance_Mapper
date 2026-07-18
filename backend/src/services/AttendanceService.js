@@ -9,15 +9,21 @@ class AttendanceService {
   async createSession(facultyId, data) {
     const prisma = require('../config/prisma');
 
-    // Resolve text subject name → subjectId (if the Subject table has the exact name)
-    let subjectId;
-    if (data.subject) {
+    // Resolve text names → UUIDs (mobile app sends human-readable labels)
+    let subjectId = data.subjectId;
+    let academicYearId = data.academicYearId;
+
+    if (data.subject && !subjectId) {
       const found = await prisma.subject.findFirst({ where: { name: data.subject } });
       subjectId = found?.id;
     }
+    if (data.year && !academicYearId) {
+      const found = await prisma.academicYear.findFirst({ where: { name: data.year } });
+      academicYearId = found?.id;
+    }
 
     // Strip frontend-only text fields that have no direct DB column
-    const { subject, year, ...rest } = data;
+    const { subject, year, subjectId: _s, academicYearId: _a, ...rest } = data;
 
     const sessionData = {
       ...rest,
@@ -25,6 +31,7 @@ class AttendanceService {
       status: 'CREATED',
       date: data.date ? new Date(data.date) : new Date(),
       ...(subjectId && { subjectId }),
+      ...(academicYearId && { academicYearId }),
     };
 
     return sessionRepository.create(sessionData);
@@ -59,10 +66,29 @@ class AttendanceService {
       throw new ConflictError(`Cannot modify a ${session.status.toLowerCase()} session.`);
     }
 
-    // Filter out restricted updates
-    const { status, facultyId: _, date, ...updateData } = data;
+    const prisma = require('../config/prisma');
 
-    return sessionRepository.update(sessionId, updateData);
+    // Resolve text names → relation IDs (same logic as createSession)
+    let subjectId = data.subjectId;
+    let academicYearId = data.academicYearId;
+
+    if (data.subject && !subjectId) {
+      const found = await prisma.subject.findFirst({ where: { name: data.subject } });
+      subjectId = found?.id;
+    }
+    if (data.year && !academicYearId) {
+      const found = await prisma.academicYear.findFirst({ where: { name: data.year } });
+      academicYearId = found?.id;
+    }
+
+    // Strip restricted and frontend-only fields
+    const { status, facultyId: _, date, subject, year, subjectId: _s, academicYearId: _a, ...updateData } = data;
+
+    return sessionRepository.update(sessionId, {
+      ...updateData,
+      ...(subjectId && { subjectId }),
+      ...(academicYearId && { academicYearId }),
+    });
   }
 
   /**

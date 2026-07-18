@@ -1,9 +1,11 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'utils/app_logger.dart';
+import 'utils/app_route_observer.dart';
 
 import 'providers/auth_provider.dart';
 import 'providers/attendance_provider.dart';
@@ -25,7 +27,6 @@ import 'screens/login_screen.dart';
 import 'screens/create_session_screen.dart';
 import 'screens/faculty_workspace_screen.dart';
 import 'screens/scanner_screen.dart';
-import 'screens/manual_entry_screen.dart';
 import 'screens/view_attendance_screen.dart';
 import 'screens/session_details_screen.dart';
 import 'screens/faculty_account_screen.dart';
@@ -61,7 +62,7 @@ void main() async {
 
   final secureStorageService = SecureStorageService();
   final apiService = ApiService(secureStorageService, configService);
-  
+
   final authRepository = AuthRepository(apiService, secureStorageService);
   final sessionRepository = SessionRepository(apiService);
   final submissionRepository = AttendanceSubmissionRepository(apiService);
@@ -73,6 +74,7 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider.value(value: configService),
         ChangeNotifierProvider(create: (_) => AuthProvider(authRepository)),
         ChangeNotifierProvider(create: (_) => FacultyAccountProvider(authRepository)),
         Provider.value(value: recoveryService),
@@ -98,6 +100,12 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -105,6 +113,7 @@ class MyApp extends StatelessWidget {
           contentTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
         ),
       ),
+      navigatorObservers: [appRouteObserver],
       home: const AuthWrapper(),
       routes: {
         '/login': (context) => const LoginScreen(),
@@ -112,7 +121,6 @@ class MyApp extends StatelessWidget {
         '/workspace': (context) => const FacultyWorkspaceScreen(),
         '/create_session': (context) => const CreateSessionScreen(),
         '/scanner': (context) => const ScannerScreen(),
-        '/manual_entry': (context) => const ManualEntryScreen(),
         '/view_attendance': (context) => const ViewAttendanceScreen(),
         '/session_details': (context) => const SessionDetailsScreen(),
         '/faculty_account': (context) => const FacultyAccountScreen(),

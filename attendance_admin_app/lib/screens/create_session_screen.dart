@@ -20,6 +20,7 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
   String? _selectedSubject = 'Employability Skills - Aptitude';
   String? _selectedSessionTime;
   DateTime _selectedDate = DateTime.now();
+  bool _initialized = false;
 
   final List<String> _years = ['Second Year', 'Third Year'];
   final List<String> _subjects = [
@@ -29,22 +30,30 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
   final List<String> _sessionTimes = ['9:30 AM - 12:00 PM', '1:50 PM - 4:20 PM'];
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      _initialized = true;
+      // Pre-fill from existing session if one is active (e.g. user came back to edit)
+      final provider =
+          Provider.of<AttendanceProvider>(context, listen: false);
+      if (provider.hasActiveSession) {
+        _selectedYear = provider.year;
+        _selectedSubject =
+            provider.subject ?? 'Employability Skills - Aptitude';
+        _selectedSessionTime = provider.sessionTime;
+        _traineeController.text = provider.labIncharge ?? '';
+        _roomController.text = provider.roomNumber ?? '';
+        if (provider.date != null) _selectedDate = provider.date!;
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _roomController.dispose();
     _traineeController.dispose();
     super.dispose();
-  }
-
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2101),
-    );
-    if (picked != null && picked != _selectedDate) {
-      setState(() => _selectedDate = picked);
-    }
   }
 
   void _startAttendance(String facultyName) async {
@@ -52,6 +61,42 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
 
     final provider = Provider.of<AttendanceProvider>(context, listen: false);
 
+    // If a session is already active, update it instead of creating a new one
+    if (provider.hasActiveSession) {
+      final yearChanged = _selectedYear != provider.year;
+      final success = await provider.updateSessionDetails(
+        year: _selectedYear,
+        subject: _selectedSubject,
+        sessionTime: _selectedSessionTime,
+        labIncharge: _traineeController.text.trim(),
+      );
+
+      if (!mounted) return;
+      if (success) {
+        if (yearChanged && provider.presentCount == 0) {
+          // No scans lost — just resume
+        } else if (yearChanged) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Year updated — previous scans were cleared (different year).'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        Navigator.pushNamed(context, '/scanner');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(provider.errorMessage ?? 'Failed to update session.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // No active session — create fresh
     final success = await provider.startSession(
       professorName: facultyName,
       year: _selectedYear,
@@ -87,9 +132,12 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
         .map((w) => w.isEmpty ? w : w[0].toUpperCase() + w.substring(1).toLowerCase())
         .join(' ');
 
+    final isEditing =
+        context.watch<AttendanceProvider>().hasActiveSession;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('New Session'),
+        title: Text(isEditing ? 'Edit Session' : 'New Session'),
         centerTitle: true,
       ),
       body: SafeArea(
@@ -100,6 +148,34 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Banner shown when editing an existing active session
+                if (isEditing) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 20),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: colorScheme.secondaryContainer
+                          .withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            color: colorScheme.secondary, size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Updating existing session — changing year clears scanned students.',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSecondaryContainer),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
 
                 // ── SESSION HOST ──────────────────────────────
                 _SectionLabel('Session Host'),
@@ -179,20 +255,11 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
                 _SectionLabel('Schedule'),
                 const SizedBox(height: 12),
 
-                InkWell(
-                  onTap: () => _selectDate(context),
-                  borderRadius: BorderRadius.circular(12),
-                  child: InputDecorator(
-                    decoration: _inputDecoration(
-                      label: 'Date',
-                      icon: Icons.calendar_today_outlined,
-                      colorScheme: colorScheme,
-                    ),
-                    child: Text(
-                      DateFormat('dd MMM yyyy').format(_selectedDate),
-                      style: theme.textTheme.bodyLarge,
-                    ),
-                  ),
+                _ReadOnlyField(
+                  label: 'Date',
+                  value: DateFormat('dd MMM yyyy').format(_selectedDate),
+                  icon: Icons.calendar_today_outlined,
+                  colorScheme: colorScheme,
                 ),
                 const SizedBox(height: 14),
 
@@ -230,9 +297,10 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
                 ),
                 const SizedBox(height: 36),
 
-                // ── START BUTTON ──────────────────────────────
+                // ── START / UPDATE BUTTON ─────────────────────
                 Consumer<AttendanceProvider>(
                   builder: (context, provider, _) {
+                    final editing = provider.hasActiveSession;
                     return FilledButton.icon(
                       onPressed: provider.isLoading
                           ? null
@@ -243,9 +311,15 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
                               height: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.qr_code_scanner),
+                          : Icon(editing
+                              ? Icons.save_outlined
+                              : Icons.qr_code_scanner),
                       label: Text(
-                        provider.isLoading ? 'Creating Session...' : 'Start Attendance',
+                        provider.isLoading
+                            ? (editing ? 'Updating...' : 'Creating Session...')
+                            : (editing
+                                ? 'Update Session'
+                                : 'Start Attendance'),
                         style: const TextStyle(fontSize: 16),
                       ),
                       style: FilledButton.styleFrom(

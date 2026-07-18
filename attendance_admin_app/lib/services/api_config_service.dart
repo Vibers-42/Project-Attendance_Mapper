@@ -1,12 +1,18 @@
-import 'dart:io' show Platform;
-
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Resolves and persists the backend base URL.
-/// Priority: dart-define BASE_URL > saved preference > platform default.
-class ApiConfigService {
+/// Stores and resolves the backend base URL.
+/// For production, this points to the hosted backend.
+/// Admins can override it from the account screen; the override persists across restarts.
+class ApiConfigService with ChangeNotifier {
   static const _storageKey = 'api_base_url';
+
+  // Set this to the hosted URL once deployed.
+  // Can also be overridden at build time: --dart-define=BACKEND_URL=https://...
+  static const _defaultUrl = String.fromEnvironment(
+    'BACKEND_URL',
+    defaultValue: 'http://192.168.1.11:3000/api/v1',
+  );
 
   final SharedPreferences _prefs;
   String _baseUrl = '';
@@ -16,54 +22,28 @@ class ApiConfigService {
   String get baseUrl => _baseUrl;
 
   Future<void> init() async {
-    // Force the default IP address to ignore any previously cached SharedPreferences 
-    // that might be stuck on 10.0.2.2
-    _baseUrl = _defaultForPlatform();
+    final saved = _prefs.getString(_storageKey);
+    _baseUrl = saved ?? _defaultUrl;
   }
 
   Future<void> setBaseUrl(String url) async {
     _baseUrl = _normalize(url);
     await _prefs.setString(_storageKey, _baseUrl);
+    notifyListeners();
   }
 
-  String _defaultForPlatform() {
-    if (kIsWeb) {
-      return 'http://localhost:3000/api/v1';
-    }
-    if (Platform.isAndroid) {
-      // Use the PC's actual local Wi-Fi IP address so physical mobile phones can connect
-      return 'http://192.168.1.10:3000/api/v1';
-    }
-    if (Platform.isIOS) {
-      return 'http://127.0.0.1:3000/api/v1';
-    }
-    return 'http://localhost:3000/api/v1';
+  void resetToDefault() {
+    _baseUrl = _defaultUrl;
+    _prefs.remove(_storageKey);
+    notifyListeners();
   }
 
   String _normalize(String url) {
-    var trimmed = url.trim();
-    if (trimmed.endsWith('/')) {
-      trimmed = trimmed.substring(0, trimmed.length - 1);
+    var t = url.trim();
+    if (t.endsWith('/')) t = t.substring(0, t.length - 1);
+    if (!t.contains('/api/v1')) {
+      t = t.endsWith('/api') ? '$t/v1' : '$t/api/v1';
     }
-    if (!trimmed.endsWith('/api/v1')) {
-      if (trimmed.endsWith('/api')) {
-        trimmed = '$trimmed/v1';
-      } else if (!trimmed.contains('/api/v1')) {
-        trimmed = '$trimmed/api/v1';
-      }
-    }
-    return trimmed;
-  }
-
-  /// Human-readable hint shown when connection fails.
-  String get connectionHint {
-    if (kIsWeb) {
-      return 'Ensure the backend is running on port 3000.';
-    }
-    if (Platform.isAndroid) {
-      return 'Emulator: use http://10.0.2.2:3000/api/v1. '
-          'Physical phone: use http://YOUR_PC_IP:3000/api/v1 (same Wi-Fi).';
-    }
-    return 'Use http://127.0.0.1:3000/api/v1 on simulator, or your PC IP on a physical device.';
+    return t;
   }
 }

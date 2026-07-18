@@ -2,7 +2,7 @@ const Joi = require('joi');
 
 const getStudentsQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
-  limit: Joi.number().integer().min(1).max(100).default(50),
+  limit: Joi.number().integer().min(1).max(1000).default(50),
   status: Joi.string().valid('ACTIVE', 'INACTIVE', 'GRADUATED', 'TRANSFERRED').optional(),
   departmentId: Joi.string().uuid().optional(),
   semester: Joi.number().integer().min(1).max(8).optional(),

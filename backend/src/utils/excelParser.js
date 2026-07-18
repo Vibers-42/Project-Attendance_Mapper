@@ -12,27 +12,61 @@ const parseStudentExcel = (fileBuffer) => {
     const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    
-    // Convert to JSON, using the first row as headers
-    const rawData = xlsx.utils.sheet_to_json(sheet, { defval: '' });
 
-    if (!rawData || rawData.length === 0) {
+    // ---------- Auto-detect header row ----------
+    // Convert the entire sheet to a 2D array (no header assumption).
+    const allRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+    if (!allRows || allRows.length === 0) {
       throw new BadRequestError('The uploaded Excel file is empty or has no data rows.');
     }
 
-    // Log detected headers to help debug column name mismatches
-    const detectedHeaders = Object.keys(rawData[0]);
-    console.log('[ExcelParser] Detected headers:', detectedHeaders);
+    // Known aliases for the Roll Number column (lowercase).
+    const rollAliases = new Set([
+      'roll no', 'roll number', 'rollno', 'roll_no', 'rollnumber',
+      'roll.no', 'roll.number', 'id', 'student id',
+      'reg no', 'reg number', 'registration no',
+    ]);
 
+    // Scan rows to find the one that looks like a header.
+    let headerRowIdx = -1;
+    for (let i = 0; i < Math.min(allRows.length, 20); i++) {
+      const cells = allRows[i].map((c) => String(c).toLowerCase().trim());
+      if (cells.some((c) => rollAliases.has(c))) {
+        headerRowIdx = i;
+        break;
+      }
+    }
+
+    if (headerRowIdx === -1) {
+      throw new BadRequestError(
+        'Could not find a header row containing "Roll No" (or similar). ' +
+        'Ensure your Excel file has a row with columns like "Roll.No", "Student Name", etc.'
+      );
+    }
+
+    // Re-parse using the detected header row — skip everything above it.
+    const rawData = xlsx.utils.sheet_to_json(sheet, {
+      defval: '',
+      range: headerRowIdx,   // treat this row as the header
+    });
+
+    if (!rawData || rawData.length === 0) {
+      throw new BadRequestError('The uploaded Excel file has a header row but no data rows beneath it.');
+    }
+
+    const detectedHeaders = Object.keys(rawData[0]);
+    console.log(`[ExcelParser] Header detected at row ${headerRowIdx + 1}:`, detectedHeaders);
+
+    // ---------- Parse data rows ----------
     const parsedStudents = [];
     const rollNumberSet = new Set();
     const errors = [];
 
     rawData.forEach((row, index) => {
-      // row index starts at 2 (assuming row 1 is header)
-      const rowNum = index + 2;
+      // +2 because: headerRowIdx is 0-based, data starts on the next row, and Excel is 1-based
+      const excelRowNum = headerRowIdx + index + 2;
 
-      // Extract values with flexible key matching (case-insensitive, trimming spaces)
       const getVal = (possibleKeys) => {
         const key = Object.keys(row).find(k =>
           possibleKeys.some(pk => k.toLowerCase().trim() === pk.toLowerCase())
@@ -41,33 +75,34 @@ const parseStudentExcel = (fileBuffer) => {
       };
 
       const serialNo = parseInt(getVal(['s.no', 'sno', 's no', 'serial no', 'serial number', 'sl.no', 'sl no']), 10) || null;
-      const rollNumber = getVal(['roll no', 'roll number', 'rollno', 'roll_no', 'rollnumber', 'id', 'student id', 'reg no', 'reg number', 'registration no']);
+      const rollNumber = getVal([...rollAliases]);
       const name = getVal(['student name', 'name', 'student', 'full name', 'fullname', 'student_name']);
-      // timetable is optional — many sheets may not have it
       const timetable = getVal(['timetable', 'time table', 'schedule', 'tt']) || null;
 
-      // Only Roll No and Name are required
+      // Skip completely empty rows silently
+      if (!rollNumber && !name) return;
+
       if (!rollNumber) {
-        errors.push(`Row ${rowNum}: Missing Roll No. (Expected column: "Roll No" or "Roll Number")`);
+        errors.push(`Row ${excelRowNum}: Missing Roll No.`);
         return;
       }
       if (!name) {
-        errors.push(`Row ${rowNum}: Missing Student Name. (Expected column: "Student Name" or "Name")`);
+        errors.push(`Row ${excelRowNum}: Missing Student Name.`);
         return;
       }
 
       if (rollNumberSet.has(rollNumber.toLowerCase())) {
-        errors.push(`Row ${rowNum}: Duplicate Roll No '${rollNumber}' found in the file.`);
+        errors.push(`Row ${excelRowNum}: Duplicate Roll No '${rollNumber}' found in the file.`);
         return;
       }
       rollNumberSet.add(rollNumber.toLowerCase());
 
       parsedStudents.push({
         serialNo,
-        rollNumber: rollNumber.toUpperCase(), // Standardize roll number
+        rollNumber: rollNumber.toUpperCase(),
         name,
         timetable,
-        barcode: rollNumber.toUpperCase(), // Using Roll No as barcode for Master Data
+        barcode: rollNumber.toUpperCase(),
         status: 'ACTIVE',
       });
     });
@@ -102,19 +137,56 @@ const parseFacultyExcel = (fileBuffer) => {
     const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    
-    const rawData = xlsx.utils.sheet_to_json(sheet, { defval: '' });
 
-    if (!rawData || rawData.length === 0) {
+    // ---------- Auto-detect header row ----------
+    const allRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+    if (!allRows || allRows.length === 0) {
       throw new BadRequestError('The uploaded Excel file is empty.');
     }
 
+    // Known aliases for the Employee ID column (lowercase).
+    const empIdAliases = new Set([
+      'employee id', 'employee.id', 'emp id', 'emp.id', 'empid',
+      'id', 'faculty id', 'faculty.id', 'fac id', 'fac.id',
+      'employee no', 'employee.no', 'emp no', 'emp.no',
+    ]);
+
+    let headerRowIdx = -1;
+    for (let i = 0; i < Math.min(allRows.length, 20); i++) {
+      const cells = allRows[i].map((c) => String(c).toLowerCase().trim());
+      if (cells.some((c) => empIdAliases.has(c))) {
+        headerRowIdx = i;
+        break;
+      }
+    }
+
+    if (headerRowIdx === -1) {
+      throw new BadRequestError(
+        'Could not find a header row containing "Employee ID" (or similar). ' +
+        'Ensure your Excel file has a row with columns like "Employee ID", "Faculty Name", etc.'
+      );
+    }
+
+    const rawData = xlsx.utils.sheet_to_json(sheet, {
+      defval: '',
+      range: headerRowIdx,
+    });
+
+    if (!rawData || rawData.length === 0) {
+      throw new BadRequestError('The uploaded Excel file has a header row but no data rows beneath it.');
+    }
+
+    const detectedHeaders = Object.keys(rawData[0]);
+    console.log(`[ExcelParser] Faculty header detected at row ${headerRowIdx + 1}:`, detectedHeaders);
+
+    // ---------- Parse data rows ----------
     const parsedFaculty = [];
     const empIdSet = new Set();
     const errors = [];
 
     rawData.forEach((row, index) => {
-      const rowNum = index + 2;
+      const excelRowNum = headerRowIdx + index + 2;
 
       const getVal = (possibleKeys) => {
         const key = Object.keys(row).find(k => 
@@ -123,20 +195,23 @@ const parseFacultyExcel = (fileBuffer) => {
         return key ? String(row[key]).trim() : '';
       };
 
-      const employeeId = getVal(['employee id', 'empid', 'id', 'faculty id']);
-      const name = getVal(['faculty name', 'name', 'faculty']);
+      const employeeId = getVal([...empIdAliases]);
+      const name = getVal(['faculty name', 'faculty.name', 'name', 'faculty', 'full name', 'fullname']);
+
+      // Skip completely empty rows silently
+      if (!employeeId && !name) return;
 
       if (!employeeId) {
-        errors.push(`Row ${rowNum}: Missing Employee ID.`);
+        errors.push(`Row ${excelRowNum}: Missing Employee ID.`);
         return;
       }
       if (!name) {
-        errors.push(`Row ${rowNum}: Missing Faculty Name.`);
+        errors.push(`Row ${excelRowNum}: Missing Faculty Name.`);
         return;
       }
 
       if (empIdSet.has(employeeId.toLowerCase())) {
-        errors.push(`Row ${rowNum}: Duplicate Employee ID '${employeeId}' found in the file.`);
+        errors.push(`Row ${excelRowNum}: Duplicate Employee ID '${employeeId}' found in the file.`);
         return;
       }
       empIdSet.add(employeeId.toLowerCase());

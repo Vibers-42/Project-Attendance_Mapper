@@ -46,13 +46,13 @@ export const studentService = {
    * Paginated list of students.
    * Pass q='' (or omit) to browse all; pass q='...' to filter by roll no or name.
    */
-  getStudents: async (page = 1, limit = 50, query = '', batch = ''): Promise<GetStudentsResponse> => {
+  getStudents: async (page = 1, limit = 50, query = '', academicYear = ''): Promise<GetStudentsResponse> => {
     let url = `/admin/students?page=${page}&limit=${limit}`;
     if (query && query.trim().length > 0) {
       url += `&q=${encodeURIComponent(query.trim())}`;
     }
-    if (batch) {
-      url += `&batch=${encodeURIComponent(batch)}`;
+    if (academicYear) {
+      url += `&academicYear=${encodeURIComponent(academicYear)}`;
     }
     const response = await apiClient.get<GetStudentsResponse>(url);
     return response.data;
@@ -72,15 +72,24 @@ export const studentService = {
     await apiClient.delete(`/admin/students/${id}`);
   },
 
+  /** Bulk-delete all students matching the given year filter (e.g. "3rd Year"). */
+  deleteStudentsByYear: async (academicYear: string): Promise<{ count: number }> => {
+    const response = await apiClient.delete<{ success: boolean; message: string; data: { count: number } }>(
+      `/admin/students?academicYear=${encodeURIComponent(academicYear)}`,
+    );
+    return response.data.data;
+  },
+
   /**
    * Additive upload — adds new students from the Excel file while
    * leaving existing records untouched.  Duplicates are skipped.
    * Required columns: "Roll No" (or alias) + "Student Name" (or alias).
    * "Timetable" column is optional.
    */
-  uploadStudents: async (file: File): Promise<UploadResponse> => {
+  uploadStudents: async (file: File, academicYear: string): Promise<UploadResponse> => {
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('academicYear', academicYear);
 
     const response = await apiClient.post<UploadResponse>(
       '/admin/students/upload',

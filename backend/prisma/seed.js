@@ -128,10 +128,12 @@ async function main() {
   const secondYear = await prisma.academicYear.findUnique({ where: { name: '2nd Year' } });
 
   for (const student of demoStudents) {
-    // Link by roll-number prefix: 24B → 3rd Year, 25B → 2nd Year
-    const acYear = student.rollNumber.startsWith('24B') ? thirdYear
-                 : student.rollNumber.startsWith('25B') ? secondYear
-                 : null;
+    // 3rd Year: 24B1* (2024 regular) + 25B[2-7]* (2025 lateral entry)
+    // 2nd Year: 25B1* (2025 regular) + 26B[2-7]* (2026 lateral entry)
+    const rn = student.rollNumber;
+    const is3rd = rn.startsWith('24B1') || /^25B[2-7]/.test(rn);
+    const is2nd = rn.startsWith('25B1') || /^26B[2-7]/.test(rn);
+    const acYear = is3rd ? thirdYear : is2nd ? secondYear : null;
     const yearLink = acYear ? { academicYearId: acYear.id } : {};
 
     await prisma.student.upsert({

@@ -1,15 +1,17 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentService, Student } from '../api/studentService';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import {
   Search, Loader2, ChevronLeft, ChevronRight,
-  ChevronsLeft, ChevronsRight, X, AlertCircle, UserPlus, Trash2,
+  ChevronsLeft, ChevronsRight, X, AlertCircle, UserPlus, Trash2, AlertTriangle,
 } from 'lucide-react';
 import { useDebounce } from 'use-debounce';
+import { toast } from 'sonner';
 import { AddStudentModal } from './AddStudentModal';
 import { DeleteStudentDialog } from './DeleteStudentDialog';
 
@@ -110,26 +112,43 @@ const YEAR_OPTIONS = buildYearOptions();
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export function StudentTable() {
-  const [page, setPage]             = useState(1);
-  const [search, setSearch]         = useState('');
-  const [batchFilter, setBatchFilter] = useState('');
-  const [jumpValue, setJumpValue]   = useState('');
-  const [addOpen, setAddOpen]       = useState(false);
-  const [delTarget, setDelTarget]   = useState<Student | null>(null);
-  const [debouncedSearch]           = useDebounce(search, 250);
+  const [page, setPage]               = useState(1);
+  const [search, setSearch]           = useState('');
+  const [yearFilter, setYearFilter]   = useState('');
+  const [jumpValue, setJumpValue]     = useState('');
+  const [addOpen, setAddOpen]         = useState(false);
+  const [delTarget, setDelTarget]     = useState<Student | null>(null);
+  const [bulkDelOpen, setBulkDelOpen] = useState(false);
+  const [debouncedSearch]             = useDebounce(search, 250);
+  const queryClient = useQueryClient();
 
   const clearSearch = useCallback(() => { setSearch(''); setPage(1); setJumpValue(''); }, []);
   const onSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value); setPage(1); setJumpValue('');
   }, []);
-  const onBatchChange = useCallback((batch: string) => { setBatchFilter(batch); setPage(1); setJumpValue(''); }, []);
+  const onYearChange = useCallback((label: string) => { setYearFilter(label === 'All' ? '' : label); setPage(1); setJumpValue(''); }, []);
 
   const { data, isLoading, isFetching, isError, error } = useQuery({
-    queryKey: ['students', page, debouncedSearch, batchFilter],
-    queryFn: () => studentService.getStudents(page, PAGE_SIZE, debouncedSearch, batchFilter),
+    queryKey: ['students', page, debouncedSearch, yearFilter],
+    queryFn: () => studentService.getStudents(page, PAGE_SIZE, debouncedSearch, yearFilter),
     placeholderData: (prev) => prev,
     staleTime: 30_000,
     retry: 2,
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: () => studentService.deleteStudentsByYear(yearFilter),
+    onSuccess: (result) => {
+      queryClient.removeQueries({ queryKey: ['students'] });
+      toast.success(`${result.count} student(s) deleted from ${yearFilter}.`);
+      setBulkDelOpen(false);
+      setPage(1);
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || 'Delete failed. Please try again.';
+      toast.error('Bulk delete failed', { description: msg });
+      setBulkDelOpen(false);
+    },
   });
 
   const students   = data?.data ?? [];
@@ -155,6 +174,41 @@ export function StudentTable() {
       <AddStudentModal isOpen={addOpen} onClose={() => setAddOpen(false)} />
       <DeleteStudentDialog student={delTarget} onClose={() => setDelTarget(null)} />
 
+      {/* Bulk delete confirmation */}
+      <Dialog open={bulkDelOpen} onOpenChange={(o) => !bulkDeleteMutation.isPending && setBulkDelOpen(o)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+              <AlertTriangle className="w-5 h-5" />
+              Delete All {yearFilter} Students
+            </DialogTitle>
+            <DialogDescription className="pt-1">
+              This will permanently delete{' '}
+              <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                {total.toLocaleString()} {yearFilter} student record{total !== 1 ? 's' : ''}
+              </span>{' '}
+              and all their associated attendance data. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setBulkDelOpen(false)} disabled={bulkDeleteMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => bulkDeleteMutation.mutate()}
+              disabled={bulkDeleteMutation.isPending}
+            >
+              {bulkDeleteMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Deleting…</>
+              ) : (
+                `Delete ${total.toLocaleString()} Student${total !== 1 ? 's' : ''}`
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="space-y-3">
 
         {/* ── Toolbar ─────────────────────────────────────────────────────── */}
@@ -179,19 +233,22 @@ export function StudentTable() {
 
             {/* Year filter */}
             <div className="flex items-center gap-2 shrink-0">
-              {YEAR_OPTIONS.map((opt) => (
-                <button
-                  key={opt.label}
-                  onClick={() => onBatchChange(opt.batch)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                    batchFilter === opt.batch
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-zinc-50 dark:bg-zinc-950 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
+              {YEAR_OPTIONS.map((opt) => {
+                const value = opt.label === 'All' ? '' : opt.label;
+                return (
+                  <button
+                    key={opt.label}
+                    onClick={() => onYearChange(opt.label)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                      yearFilter === value
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-zinc-50 dark:bg-zinc-950 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -201,10 +258,20 @@ export function StudentTable() {
               <span className="text-sm text-zinc-500 font-medium whitespace-nowrap">
                 {total === 0
                   ? 'No records'
-                  : debouncedSearch || batchFilter
+                  : debouncedSearch || yearFilter
                   ? `${total.toLocaleString()} match${total !== 1 ? 'es' : ''}`
                   : `${from}–${to} of ${total.toLocaleString()} records`}
               </span>
+            )}
+            {yearFilter && total > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => setBulkDelOpen(true)}
+                className="gap-2 border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20 shrink-0"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete {yearFilter}
+              </Button>
             )}
             <Button id="add-student-btn" onClick={() => setAddOpen(true)} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shrink-0">
               <UserPlus className="w-4 h-4" />

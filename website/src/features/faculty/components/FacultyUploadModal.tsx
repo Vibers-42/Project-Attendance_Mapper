@@ -5,7 +5,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { UploadCloud, FileType, AlertCircle, CheckCircle2, Copy, Check } from 'lucide-react';
-import * as xlsx from 'xlsx';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { facultyService, NewFacultyCredential } from '../api/facultyService';
 import { toast } from 'sonner';
@@ -33,8 +32,9 @@ export function FacultyUploadModal({ isOpen, onClose }: FacultyUploadModalProps)
     setError(null);
     setFile(selectedFile);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        const xlsx = await import('xlsx');
         const data     = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = xlsx.read(data, { type: 'array' });
         const sheet    = workbook.Sheets[workbook.SheetNames[0]];

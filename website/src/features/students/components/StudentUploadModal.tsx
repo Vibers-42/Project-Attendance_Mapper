@@ -5,7 +5,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { UploadCloud, FileType, AlertCircle } from 'lucide-react';
-import * as xlsx from 'xlsx';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentService } from '../api/studentService';
 import { toast } from 'sonner';
@@ -15,10 +14,14 @@ interface StudentUploadModalProps {
   onClose: () => void;
 }
 
+const YEAR_OPTIONS = ['2nd Year', '3rd Year'] as const;
+type YearOption = typeof YEAR_OPTIONS[number];
+
 export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<YearOption | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
@@ -32,8 +35,9 @@ export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps)
     setFile(selectedFile);
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        const xlsx = await import('xlsx');
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = xlsx.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
@@ -58,6 +62,7 @@ export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps)
     setFile(null);
     setPreviewData([]);
     setError(null);
+    setSelectedYear(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -69,7 +74,8 @@ export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps)
   const uploadMutation = useMutation({
     mutationFn: () => {
       if (!file) throw new Error('No file selected');
-      return studentService.uploadStudents(file);
+      if (!selectedYear) throw new Error('Please select a year before uploading');
+      return studentService.uploadStudents(file, selectedYear);
     },
     onSuccess: (data) => {
       // Remove all cached student pages so the table always shows fresh data
@@ -99,10 +105,42 @@ export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps)
           </DialogDescription>
         </DialogHeader>
 
+        {/* ── Year selector (always visible) ─────────────────────────────── */}
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Which year are you uploading for? <span className="text-red-500">*</span>
+          </p>
+          <div className="flex gap-2">
+            {YEAR_OPTIONS.map((yr) => (
+              <button
+                key={yr}
+                type="button"
+                onClick={() => setSelectedYear(yr)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  selectedYear === yr
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
+                }`}
+              >
+                {yr}
+              </button>
+            ))}
+          </div>
+          {!selectedYear && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Select a year so students are correctly tagged in the database.
+            </p>
+          )}
+        </div>
+
         {!file && (
-          <div 
-            className="border-2 border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl p-12 flex flex-col items-center justify-center cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors"
-            onClick={() => fileInputRef.current?.click()}
+          <div
+            className={`border-2 border-dashed rounded-xl p-12 flex flex-col items-center justify-center transition-colors ${
+              selectedYear
+                ? 'border-zinc-300 dark:border-zinc-700 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50'
+                : 'border-zinc-200 dark:border-zinc-800 opacity-50 cursor-not-allowed'
+            }`}
+            onClick={() => selectedYear && fileInputRef.current?.click()}
           >
             <UploadCloud className="w-12 h-12 text-zinc-400 mb-4" />
             <p className="text-zinc-600 dark:text-zinc-400 font-medium text-center">
@@ -167,11 +205,13 @@ export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps)
             Cancel
           </Button>
           {file && (
-            <Button 
-              onClick={() => uploadMutation.mutate()} 
-              disabled={uploadMutation.isPending || !!error}
+            <Button
+              onClick={() => uploadMutation.mutate()}
+              disabled={uploadMutation.isPending || !!error || !selectedYear}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              title={!selectedYear ? 'Select a year first' : undefined}
             >
-              {uploadMutation.isPending ? 'Uploading...' : 'Confirm & Upload'}
+              {uploadMutation.isPending ? 'Uploading…' : `Upload as ${selectedYear ?? '…'}`}
             </Button>
           )}
         </DialogFooter>

@@ -81,6 +81,11 @@ async function throwBlobError(err: any): Promise<never> {
       throw enhanced;
     } catch (parseErr: any) {
       if (parseErr.response) throw parseErr; // already enhanced
+      // Non-JSON body (e.g. HTML 502 page): surface the raw text as the message
+      const text2 = await err.response.data.text().catch(() => '');
+      const fallback = new Error(`Server error (${err.response.status})${text2 ? ': ' + text2.slice(0, 120) : ''}`) as any;
+      fallback.response = { ...err.response, data: null };
+      throw fallback;
     }
   }
   throw err;

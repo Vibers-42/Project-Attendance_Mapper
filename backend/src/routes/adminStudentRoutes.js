@@ -17,6 +17,9 @@ router.post('/upload', upload.single('file'), adminStudentController.uploadStude
 // POST /api/v1/admin/students          — add a single student
 router.post('/', adminStudentController.addStudent);
 
+// DELETE /api/v1/admin/students?academicYear=... — bulk delete by year filter (must precede /:id)
+router.delete('/', adminStudentController.deleteStudentsByFilter);
+
 // DELETE /api/v1/admin/students/:id    — remove a single student
 router.delete('/:id', adminStudentController.deleteStudent);
 

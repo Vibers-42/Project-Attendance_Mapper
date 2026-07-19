@@ -12,7 +12,7 @@ export default function StudentsPage() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950 font-sans">
+    <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
       <Navbar />
 
       <main className="flex-1 container mx-auto px-4 sm:px-8 py-8">
@@ -21,15 +21,15 @@ export default function StudentsPage() {
         <div className="mb-7">
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors mb-4"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors mb-5 group"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
             Dashboard
           </Link>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
             <div className="flex items-center gap-4">
-              <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center shrink-0">
+              <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 flex items-center justify-center shrink-0">
                 <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
@@ -44,7 +44,7 @@ export default function StudentsPage() {
 
             <Button
               onClick={() => setIsUploadModalOpen(true)}
-              className="gap-2 shrink-0 bg-blue-600 hover:bg-blue-700 text-white"
+              className="gap-2 shrink-0 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
             >
               <Upload className="w-4 h-4" />
               Upload Students (Excel)

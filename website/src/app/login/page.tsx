@@ -12,19 +12,20 @@ export default function LoginPage() {
     <div className="flex min-h-screen">
 
       {/* ── Left Brand Panel ── */}
-      <div className="hidden lg:flex lg:w-5/12 xl:w-2/5 bg-blue-600 flex-col justify-between p-12 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-5/12 xl:w-2/5 bg-gradient-to-br from-blue-600 to-blue-700 flex-col justify-between p-12 relative overflow-hidden">
         {/* Decorative circles */}
         <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-white/5" />
         <div className="absolute -bottom-32 -left-16 w-96 h-96 rounded-full bg-white/5" />
-        <div className="absolute top-1/2 right-0 w-48 h-48 rounded-full bg-blue-500/40 -translate-y-1/2 translate-x-1/2" />
+        <div className="absolute top-1/2 right-0 w-48 h-48 rounded-full bg-blue-500/30 -translate-y-1/2 translate-x-1/2" />
+        <div className="absolute top-1/3 left-1/4 w-24 h-24 rounded-full bg-white/5" />
 
         {/* Brand */}
         <div className="relative z-10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
               <GraduationCap className="w-5 h-5 text-white" />
             </div>
-            <span className="text-white font-bold text-lg tracking-tight">Attendance Mapper</span>
+            <span className="text-white font-semibold text-[15px] tracking-tight">Attendance Mapper</span>
           </div>
         </div>
 
@@ -34,15 +35,17 @@ export default function LoginPage() {
             <h1 className="text-4xl font-bold text-white leading-tight">
               Attendance,<br />made effortless.
             </h1>
-            <p className="text-blue-100 text-base leading-relaxed max-w-xs">
+            <p className="text-blue-100/90 text-[15px] leading-relaxed max-w-xs">
               The administration portal for managing students, faculty, and session reports — all in one place.
             </p>
           </div>
 
           <ul className="space-y-3">
             {FEATURES.map((f) => (
-              <li key={f} className="flex items-center gap-2.5 text-blue-50 text-sm">
-                <CheckCircle2 className="w-4 h-4 text-blue-200 shrink-0" />
+              <li key={f} className="flex items-center gap-3 text-blue-50 text-sm">
+                <div className="w-5 h-5 rounded-full bg-white/15 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-3 h-3 text-white" />
+                </div>
                 {f}
               </li>
             ))}
@@ -50,8 +53,8 @@ export default function LoginPage() {
         </div>
 
         {/* Footer */}
-        <p className="relative z-10 text-blue-200/60 text-xs">
-          © {new Date().getFullYear()} Attendance Mapper. All rights reserved.
+        <p className="relative z-10 text-blue-200/50 text-xs">
+          © {new Date().getFullYear()} Attendance Mapper
         </p>
       </div>
 
@@ -62,7 +65,7 @@ export default function LoginPage() {
           <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center">
             <GraduationCap className="w-5 h-5 text-white" />
           </div>
-          <span className="font-bold text-lg tracking-tight">Attendance Mapper</span>
+          <span className="font-semibold text-[15px] tracking-tight">Attendance Mapper</span>
         </div>
 
         <LoginForm />

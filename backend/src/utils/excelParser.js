@@ -67,17 +67,29 @@ const parseStudentExcel = (fileBuffer) => {
       // +2 because: headerRowIdx is 0-based, data starts on the next row, and Excel is 1-based
       const excelRowNum = headerRowIdx + index + 2;
 
-      const getVal = (possibleKeys) => {
-        const key = Object.keys(row).find(k =>
+      const getVal = (possibleKeys, { fuzzy = false } = {}) => {
+        const keys = Object.keys(row);
+        // 1. Exact match (case-insensitive)
+        let key = keys.find(k =>
           possibleKeys.some(pk => k.toLowerCase().trim() === pk.toLowerCase())
         );
+        // 2. Fuzzy fallback: column name contains any alias (used for columns like "Timetable Group")
+        if (!key && fuzzy) {
+          key = keys.find(k =>
+            possibleKeys.some(pk => k.toLowerCase().trim().includes(pk.toLowerCase()))
+          );
+        }
         return key ? String(row[key]).trim() : '';
       };
 
       const serialNo = parseInt(getVal(['s.no', 'sno', 's no', 'serial no', 'serial number', 'sl.no', 'sl no']), 10) || null;
       const rollNumber = getVal([...rollAliases]);
       const name = getVal(['student name', 'name', 'student', 'full name', 'fullname', 'student_name']);
-      const timetable = getVal(['timetable', 'time table', 'schedule', 'tt']) || null;
+      const timetable = getVal([
+        'timetable', 'time table', 'time-table', 'schedule', 'tt',
+        'timetable group', 'tt group', 'time table group', 'timetable grp', 'tt grp',
+        'timetable batch', 'tt batch', 't.t.',
+      ], { fuzzy: true }) || null;
 
       // Skip completely empty rows silently
       if (!rollNumber && !name) return;

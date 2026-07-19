@@ -128,7 +128,7 @@ class WorkbookGenerationService {
     
     const fileName = `Attendance_Workbook_${nameSuffix}_${timestamp}.xlsx`;
     
-    const filePath = generateWorkbook(overallData, roomDataMap, sessionInfoMap, fileName);
+    const filePath = await generateWorkbook(overallData, roomDataMap, sessionInfoMap, fileName);
 
     // 6. Save Metadata to DB
     const workbookName = `Workbook - ${topic || 'All Topics'} - ${new Date().toLocaleDateString()}`;

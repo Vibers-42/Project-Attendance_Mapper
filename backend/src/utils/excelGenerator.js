@@ -1,101 +1,156 @@
-const xlsx = require('xlsx');
-const path = require('path');
-const fs = require('fs');
+const ExcelJS = require('exceljs');
+const path    = require('path');
+const fs      = require('fs');
 
-/**
- * Shared helper: builds the workbook object (in memory only, no I/O).
- * Called by both the disk-save variant and the buffer variant.
- */
-const buildWorkbook = (overallData, roomDataMap, sessionInfoMap) => {
-  const workbook = xlsx.utils.book_new();
+// ── Style helpers ──────────────────────────────────────────────────────────────
+const thin = { style: 'thin', color: { argb: 'FF94A3B8' } };
+const BORDER = { top: thin, left: thin, bottom: thin, right: thin };
 
-  // 1. Overall Attendance sheet
-  const overallSheet = xlsx.utils.json_to_sheet(overallData);
-  overallSheet['!cols'] = [
-    { wch: 5 },   // S.No
-    { wch: 15 },  // Roll No
-    { wch: 30 },  // Student Name
-    { wch: 15 },  // Timetable
-    { wch: 18 },  // Attendance Status
+const FILL = (hex) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: hex } });
+const FONT = (hex, { bold = false, size = 10 } = {}) =>
+  ({ name: 'Calibri', bold, size, color: { argb: hex } });
+const ALIGN = (h, indent = 0) => ({ horizontal: h, vertical: 'middle', indent, wrapText: false });
+
+const S = (cell, { bg, fg, bold, size, alignH = 'left', indent = 0, border = false } = {}) => {
+  if (bg)     cell.fill      = FILL(bg);
+  if (fg)     cell.font      = FONT(fg, { bold, size });
+  if (border) cell.border    = BORDER;
+  cell.alignment = ALIGN(alignH, indent);
+};
+
+// ── Core builder (returns an ExcelJS Workbook) ────────────────────────────────
+const buildWorkbook = async (overallData, roomDataMap, sessionInfoMap) => {
+  const wb = new ExcelJS.Workbook();
+
+  // ── 1. Overall Attendance sheet ────────────────────────────────────────────
+  const ows = wb.addWorksheet('Overall Attendance');
+  ows.columns = [
+    { width: 6  }, // A S.No
+    { width: 18 }, // B Roll No
+    { width: 32 }, // C Student Name
+    { width: 15 }, // D Timetable
+    { width: 10 }, // E Present
+    { width: 10 }, // F Absent
   ];
-  xlsx.utils.book_append_sheet(workbook, overallSheet, 'Overall Attendance');
 
-  // 2. Per-room sheets
-  for (const [roomName, students] of Object.entries(roomDataMap)) {
-    const sheetData = [];
-
-    students.forEach(student => {
-      sheetData.push({
-        'S.No': student['S.No'],
-        'Roll No': student['Roll No'],
-        'Student Name': student['Student Name'],
-        'Timetable': student['Timetable'],
-        'Attendance Status': student['Attendance Status'],
-      });
+  const oCols = ['A','B','C','D','E','F'];
+  // Header
+  ows.getRow(1).height = 22;
+  ['S.No','Roll No','Student Name','Timetable','Present','Absent'].forEach((h, ci) => {
+    const cell = ows.getCell(`${oCols[ci]}1`);
+    cell.value = h;
+    S(cell, { bg: 'FF2563EB', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
+  });
+  // Data rows
+  overallData.forEach((row, idx) => {
+    const rn = idx + 2;
+    ows.getRow(rn).height = 18;
+    const bg  = idx % 2 === 1 ? 'FFEFF6FF' : 'FFFFFFFF';
+    const vals = [row['S.No'], row['Roll No'], row['Student Name'], row['Timetable'], row['Present'], row['Absent']];
+    vals.forEach((val, ci) => {
+      const cell = ows.getCell(`${oCols[ci]}${rn}`);
+      cell.value = val;
+      S(cell, { bg, fg: 'FF1F2937', border: true, alignH: ci === 0 || ci >= 4 ? 'center' : 'left', indent: ci === 0 || ci >= 4 ? 0 : 1 });
     });
+  });
 
-    sheetData.push({});
-    sheetData.push({});
+  // ── 2. Per-room sheets ─────────────────────────────────────────────────────
+  // Layout: student table left (A-F), gap (G), session info right (H-I)
+  for (const [roomName, students] of Object.entries(roomDataMap)) {
+    const info = sessionInfoMap[roomName] || {};
 
-    const sessionInfo = sessionInfoMap[roomName] || {};
-    sheetData.push({ 'S.No': 'SESSION INFORMATION' });
-    sheetData.push({ 'S.No': 'Faculty ID',                'Roll No': sessionInfo.professorId            || 'N/A' });
-    sheetData.push({ 'S.No': 'Faculty Name',              'Roll No': sessionInfo.professorName          || 'N/A' });
-    sheetData.push({ 'S.No': 'Trainer Name',              'Roll No': sessionInfo.labInchargeName        || 'N/A' });
-    sheetData.push({ 'S.No': 'Trainer Employee ID',       'Roll No': sessionInfo.labInchargeEmployeeId  || 'N/A' });
-    sheetData.push({ 'S.No': 'Room Number',               'Roll No': sessionInfo.room                   || roomName });
-    sheetData.push({ 'S.No': 'Topic',                     'Roll No': sessionInfo.topic                  || 'N/A' });
-    sheetData.push({ 'S.No': 'Session Date',              'Roll No': sessionInfo.sessionDate            || 'N/A' });
-    sheetData.push({ 'S.No': 'Session Time',              'Roll No': sessionInfo.sessionTime            || 'N/A' });
-
-    const roomSheet = xlsx.utils.json_to_sheet(sheetData);
-    roomSheet['!cols'] = [
-      { wch: 25 },
-      { wch: 25 },
-      { wch: 30 },
-      { wch: 15 },
-      { wch: 18 },
+    const infoRows = [
+      ['Faculty ID',       info.professorId     || 'N/A'],
+      ['Faculty Name',     info.professorName   || 'N/A'],
+      ['Trainer Name',     info.labInchargeName || 'N/A'],
+      ['Room Number',      info.room            || roomName],
+      ['Session Date',     info.sessionDate     || 'N/A'],
+      ['Session Time',     info.sessionTime     || 'N/A'],
+      ['Students Present', students.length],
     ];
 
-    const safeRoomName = roomName.substring(0, 31).replace(/[\\/?*[\]]/g, '_');
-    xlsx.utils.book_append_sheet(workbook, roomSheet, safeRoomName);
+    const safeRoom = roomName.substring(0, 31).replace(/[\\/?*[\]]/g, '_');
+    const rws = wb.addWorksheet(safeRoom);
+    rws.columns = [
+      { width: 6  }, // A S.No
+      { width: 18 }, // B Roll No
+      { width: 32 }, // C Student Name
+      { width: 15 }, // D Timetable
+      { width: 10 }, // E Present
+      { width: 10 }, // F Absent
+      { width: 3  }, // G gap
+      { width: 22 }, // H Field
+      { width: 24 }, // I Value
+    ];
+
+    const sCols     = ['A','B','C','D','E','F'];
+    const totalRows = Math.max(1 + students.length, 2 + infoRows.length);
+
+    for (let i = 0; i < totalRows; i++) {
+      const rn = i + 1;
+      rws.getRow(rn).height = 20;
+
+      // Left: student table
+      if (i === 0) {
+        ['S.No','Roll No','Student Name','Timetable','Present','Absent'].forEach((h, ci) => {
+          const cell = rws.getCell(`${sCols[ci]}${rn}`);
+          cell.value = h;
+          S(cell, { bg: 'FF2563EB', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
+        });
+      } else {
+        const student = students[i - 1];
+        if (student) {
+          const bg   = (i - 1) % 2 === 1 ? 'FFEFF6FF' : 'FFFFFFFF';
+          const vals = [student['S.No'], student['Roll No'], student['Student Name'], student['Timetable'], student['Present'] ?? 'P', student['Absent'] ?? ''];
+          vals.forEach((val, ci) => {
+            const cell = rws.getCell(`${sCols[ci]}${rn}`);
+            cell.value = val;
+            S(cell, { bg, fg: 'FF1F2937', border: true, alignH: ci === 0 || ci >= 4 ? 'center' : 'left', indent: ci === 0 || ci >= 4 ? 0 : 1 });
+          });
+        }
+      }
+
+      // Right: session info
+      if (i === 0) {
+        rws.mergeCells(`H${rn}:I${rn}`);
+        const tc = rws.getCell(`H${rn}`);
+        tc.value = 'SESSION INFORMATION';
+        S(tc, { bg: 'FF1E40AF', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
+        rws.getCell(`I${rn}`).border = BORDER;
+      } else if (i === 1) {
+        const fh = rws.getCell(`H${rn}`);
+        const vh = rws.getCell(`I${rn}`);
+        fh.value = 'FIELD';  vh.value = 'VALUE';
+        S(fh, { bg: 'FF1E3A8A', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
+        S(vh, { bg: 'FF1E3A8A', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
+      } else if (i - 2 < infoRows.length) {
+        const [label, value] = infoRows[i - 2];
+        const lc = rws.getCell(`H${rn}`);
+        const vc = rws.getCell(`I${rn}`);
+        lc.value = label;  vc.value = value;
+        S(lc, { bg: 'FFDBEAFE', fg: 'FF1E3A8A', bold: true, border: true, indent: 1 });
+        S(vc, { bg: 'FFF8FAFC', fg: 'FF1F2937', border: true, indent: 1 });
+      }
+    }
   }
 
-  return workbook;
+  return wb;
 };
 
-/**
- * Generates an in-memory Buffer of the Excel workbook.
- * Nothing is written to disk. Used by the on-demand download endpoint.
- *
- * @returns {Buffer}
- */
-const generateWorkbookBuffer = (overallData, roomDataMap, sessionInfoMap) => {
-  const wb = buildWorkbook(overallData, roomDataMap, sessionInfoMap);
-  return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+// ── Public API ─────────────────────────────────────────────────────────────────
+
+const generateWorkbookBuffer = async (overallData, roomDataMap, sessionInfoMap) => {
+  const wb = await buildWorkbook(overallData, roomDataMap, sessionInfoMap);
+  return wb.xlsx.writeBuffer();
 };
 
-/**
- * Builds and SAVES a multi-sheet Excel workbook for attendance.
- * Kept for backward compatibility with AdminWorkbookController.
- *
- * @returns {String} Absolute path to the saved file
- */
-const generateWorkbook = (overallData, roomDataMap, sessionInfoMap, fileName) => {
-  const wb = buildWorkbook(overallData, roomDataMap, sessionInfoMap);
-
+const generateWorkbook = async (overallData, roomDataMap, sessionInfoMap, fileName) => {
+  const wb         = await buildWorkbook(overallData, roomDataMap, sessionInfoMap);
   const uploadsDir = path.join(__dirname, '../../uploads/workbooks');
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  }
-
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
   const filePath = path.join(uploadsDir, fileName);
-  xlsx.writeFile(wb, filePath);
+  await wb.xlsx.writeFile(filePath);
   return filePath;
 };
 
-module.exports = {
-  generateWorkbook,
-  generateWorkbookBuffer,
-};
-
+module.exports = { generateWorkbook, generateWorkbookBuffer };

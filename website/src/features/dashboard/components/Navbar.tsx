@@ -25,18 +25,20 @@ export function Navbar() {
     .toUpperCase();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
-      <div className="container mx-auto flex h-15 items-center gap-6 px-4 sm:px-8" style={{ height: '60px' }}>
+    <header className="sticky top-0 z-50 w-full border-b border-zinc-200/70 dark:border-zinc-800/70 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md">
+      <div className="container mx-auto flex items-center gap-6 px-4 sm:px-8" style={{ height: '60px' }}>
 
         {/* Brand */}
         <Link
           href="/dashboard"
-          className="flex items-center gap-2.5 hover:opacity-90 transition-opacity shrink-0"
+          className="flex items-center gap-2.5 hover:opacity-85 transition-opacity shrink-0"
         >
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-            <GraduationCap className="h-5 w-5 text-white" />
+          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-sm">
+            <GraduationCap className="h-4.5 w-4.5 text-white" />
           </div>
-          <span className="font-bold text-[15px] tracking-tight">Attendance Mapper</span>
+          <span className="font-semibold text-[14.5px] tracking-tight text-zinc-900 dark:text-zinc-100">
+            Attendance Mapper
+          </span>
         </Link>
 
         {/* Nav links */}
@@ -53,7 +55,7 @@ export function Navbar() {
                 className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
                   isActive
                     ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                    : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
+                    : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 hover:bg-zinc-100/80 dark:hover:bg-zinc-800/60'
                 }`}
               >
                 {label}
@@ -64,11 +66,11 @@ export function Navbar() {
 
         {/* User section */}
         <div className="flex items-center gap-2 ml-auto">
-          <div className="hidden sm:flex items-center gap-2.5 pr-2 border-r border-zinc-200 dark:border-zinc-800 mr-1">
-            <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
-              <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300">{initials}</span>
+          <div className="hidden sm:flex items-center gap-2.5 pr-3 border-r border-zinc-200 dark:border-zinc-800 mr-0.5">
+            <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
+              <span className="text-[10.5px] font-bold text-white">{initials}</span>
             </div>
-            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300 max-w-[140px] truncate">
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300 max-w-[140px] truncate leading-none">
               {user?.employeeName || 'Super Admin'}
             </span>
           </div>
@@ -77,9 +79,9 @@ export function Navbar() {
             variant="ghost"
             size="sm"
             onClick={logout}
-            className="gap-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 h-8 px-2.5"
+            className="gap-1.5 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-100 h-8 px-2.5"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-3.5 w-3.5" />
             <span className="hidden sm:inline text-sm">Sign out</span>
           </Button>
         </div>

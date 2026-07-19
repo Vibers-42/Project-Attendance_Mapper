@@ -67,7 +67,8 @@ class AdminStudentController {
       throw new BadRequestError('No file uploaded.');
     }
 
-    const result = await StudentMasterDataService.uploadStudents(req.file.buffer);
+    const academicYear = req.body?.academicYear?.trim() || null;
+    const result = await StudentMasterDataService.uploadStudents(req.file.buffer, academicYear);
 
     return sendSuccess(res, {
       message: result.message,
@@ -76,6 +77,19 @@ class AdminStudentController {
         skippedCount: result.skippedCount,
         totalInFile: result.totalInFile,
       },
+    });
+  }
+
+  // DELETE /admin/students?academicYear=3rd+Year — bulk delete filtered students
+  async deleteStudentsByFilter(req, res) {
+    const academicYear = req.query.academicYear?.trim();
+    if (!academicYear) {
+      throw new BadRequestError('academicYear query parameter is required for bulk delete.');
+    }
+    const count = await StudentMasterDataService.deleteStudentsByYear(academicYear);
+    return sendSuccess(res, {
+      message: `Deleted ${count} student(s) from ${academicYear}.`,
+      data: { count },
     });
   }
 

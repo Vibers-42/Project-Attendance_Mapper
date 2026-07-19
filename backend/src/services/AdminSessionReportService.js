@@ -262,13 +262,17 @@ class AdminSessionReportService {
     const dateStr = `${pad(dy)}-${pad(mo + 1)}-${yr}`;
 
     let sno = 1;
-    const overallData = allStudents.map(student => ({
-      'S.No':              sno++,
-      'Roll No':           student.rollNumber,
-      'Student Name':      student.name,
-      'Timetable':         student.timetable || '',
-      'Attendance Status': presentRollNumbers.has(student.rollNumber) ? 'P' : 'A',
-    }));
+    const overallData = allStudents.map(student => {
+      const isPresent = presentRollNumbers.has(student.rollNumber);
+      return {
+        'S.No':         sno++,
+        'Roll No':      student.rollNumber,
+        'Student Name': student.name,
+        'Timetable':    student.timetable || '',
+        'Present':      isPresent ? 'P' : '',
+        'Absent':       isPresent ? '' : 'A',
+      };
+    });
 
     // ── 9. Sheets 2+ — One sheet per session ─────────────────────────────────
     //
@@ -292,23 +296,21 @@ class AdminSessionReportService {
 
       let ttSno = 1;
       roomDataMap[sheetKey] = presentStudents.map(student => ({
-        'S.No':              ttSno++,
-        'Roll No':           student.rollNumber,
-        'Student Name':      student.name,
-        'Timetable':         student.timetable || '',
-        'Attendance Status': 'P',
+        'S.No':         ttSno++,
+        'Roll No':      student.rollNumber,
+        'Student Name': student.name,
+        'Timetable':    student.timetable || '',
+        'Present':      'P',
+        'Absent':       '',
       }));
 
       sessionInfoMap[sheetKey] = {
-        professorId:           session.faculty?.facultyId      || 'N/A',
-        professorName:         session.faculty?.name           || 'N/A',
-        labInchargeName:       session.labIncharge             || 'N/A',
-        labInchargeEmployeeId: session.labInchargeEmployeeId   || 'N/A',
-        sessionDate:           dateStr,
-        sessionTime:           session.sessionTime             || 'N/A',
-        subject:               session.subject?.name           || 'N/A',
-        topic:                 session.topic                   || 'N/A',
-        room:                  session.room?.name              || 'N/A',
+        professorId:     session.faculty?.facultyId || 'N/A',
+        professorName:   session.faculty?.name      || 'N/A',
+        labInchargeName: session.labIncharge        || 'N/A',
+        sessionDate:     dateStr,
+        sessionTime:     session.sessionTime        || 'N/A',
+        room:            session.room?.name         || 'N/A',
       };
     }
 
@@ -323,11 +325,11 @@ class AdminSessionReportService {
       topic:        resolvedTopic,
       date:         sessions[0].date,
     });
-    const safeFileName = workbookName.replace(/[/\\?*[\]:|">]/g, '_');
+    const safeFileName = workbookName.replace(/[/\\?*[\]:|"<>]/g, '_');
     const fileName = `${safeFileName}.xlsx`;
 
     // ── 11. Generate in-memory buffer ─────────────────────────────────────────
-    const buffer = generateWorkbookBuffer(overallData, roomDataMap, sessionInfoMap);
+    const buffer = await generateWorkbookBuffer(overallData, roomDataMap, sessionInfoMap);
     return { buffer, fileName };
   }
 
@@ -424,13 +426,17 @@ class AdminSessionReportService {
     const workbook = new ExcelJS.Workbook();
     const ws       = workbook.addWorksheet('Session Report', { pageSetup: { fitToPage: true } });
 
-    // Column definitions (A–E)
+    // Columns: A-F = student table, G = gap, H-I = session info
     ws.columns = [
-      { width: 22 },  // A: label / S.No
-      { width: 26 },  // B: (label continued / Roll No)
-      { width: 34 },  // C: value / Student Name
-      { width: 15 },  // D: value continued / Timetable
-      { width: 18 },  // E: value continued / Status
+      { width: 6  },  // A: S.No
+      { width: 20 },  // B: Roll No
+      { width: 32 },  // C: Student Name
+      { width: 15 },  // D: Timetable
+      { width: 12 },  // E: Present
+      { width: 12 },  // F: Absent
+      { width: 3  },  // G: gap
+      { width: 22 },  // H: Field
+      { width: 24 },  // I: Value
     ];
 
     // ── Shared style helpers ───────────────────────────────────────────────────
@@ -452,114 +458,86 @@ class AdminSessionReportService {
       return cell;
     };
 
-    let rn = 0; // current row number tracker
-
-    // ── Row 1: Big title ───────────────────────────────────────────────────────
-    rn++;
-    ws.mergeCells(`A${rn}:E${rn}`);
-    ws.getRow(rn).height = 34;
-    const titleCell = ws.getCell(`A${rn}`);
-    titleCell.value = 'ATTENDANCE REPORT';
-    styleCell(titleCell, { bg: 'FF1E40AF', fg: 'FFFFFFFF', bold: true, size: 16, alignH: 'center' });
-
-    // ── Row 2: Subtitle ────────────────────────────────────────────────────────
-    rn++;
-    ws.mergeCells(`A${rn}:E${rn}`);
-    ws.getRow(rn).height = 22;
-    const subCell = ws.getCell(`A${rn}`);
-    subCell.value = `${topicDisplay}   ·   ${dateStr}   ·   ${roomName}   ·   ${session.academicYear?.name || 'All Years'}`;
-    styleCell(subCell, { bg: 'FF2563EB', fg: 'FFFFFFFF', size: 10, alignH: 'center' });
-
-    // ── Row 3: Gap ─────────────────────────────────────────────────────────────
-    rn++;
-    ws.getRow(rn).height = 10;
-
-    // ── Rows 4–12: Session info table ──────────────────────────────────────────
+    // ── Session info rows (right side, H-I) ────────────────────────────────────
     const infoRows = [
-      ['Faculty ID',          session.faculty?.facultyId    || 'N/A'],
-      ['Faculty Name',        session.faculty?.name         || 'N/A'],
-      ['Trainer Name',        session.labIncharge           || 'N/A'],
-      ['Trainer Employee ID', session.labInchargeEmployeeId || 'N/A'],
-      ['Room Number',         roomName],
-      ['Topic',               topicDisplay],
-      ['Session Date',        dateStr],
-      ['Session Time',        session.sessionTime           || 'N/A'],
-      ['Students Present',    presentRollNumbers.size],
+      ['Faculty ID',       session.faculty?.facultyId || 'N/A'],
+      ['Faculty Name',     session.faculty?.name      || 'N/A'],
+      ['Trainer Name',     session.labIncharge        || 'N/A'],
+      ['Room Number',      roomName],
+      ['Session Date',     dateStr],
+      ['Session Time',     session.sessionTime        || 'N/A'],
+      ['Students Present', presentRollNumbers.size],
     ];
+    // Right side: row 1 = title (H:I merged), row 2 = FIELD/VALUE header, rows 3-9 = data
+    const studentCols = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const totalRows   = Math.max(1 + allStudents.length, 2 + infoRows.length);
 
-    for (const [label, value] of infoRows) {
-      rn++;
+    for (let i = 0; i < totalRows; i++) {
+      const rn = i + 1;
       ws.getRow(rn).height = 20;
-      ws.mergeCells(`A${rn}:B${rn}`);
-      ws.mergeCells(`C${rn}:E${rn}`);
 
-      const lCell = ws.getCell(`A${rn}`);
-      const vCell = ws.getCell(`C${rn}`);
-      lCell.value = label;
-      vCell.value = value;
+      // ── Left: student table ──────────────────────────────────────────────────
+      if (i === 0) {
+        // Header row
+        const hdrs = ['S.No', 'Roll No', 'Student Name', 'Timetable', 'Present', 'Absent'];
+        hdrs.forEach((h, ci) => {
+          const cell = ws.getCell(`${studentCols[ci]}${rn}`);
+          cell.value = h;
+          styleCell(cell, { bg: 'FF2563EB', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
+        });
+      } else {
+        const student = allStudents[i - 1];
+        if (student) {
+          const isEven = (i - 1) % 2 === 1;
+          const rowBg  = isEven ? 'FFEFF6FF' : 'FFFFFFFF';
+          const vals   = [i, student.rollNumber, student.name, student.timetable || '', 'P', ''];
+          vals.forEach((val, ci) => {
+            const cell = ws.getCell(`${studentCols[ci]}${rn}`);
+            cell.value = val;
+            styleCell(cell, {
+              bg: rowBg, fg: 'FF1F2937', border: true,
+              alignH: ci === 0 || ci >= 4 ? 'center' : 'left',
+              indent: ci === 0 || ci >= 4 ? 0 : 1,
+            });
+          });
+        }
+      }
 
-      styleCell(lCell, { bg: 'FFDBEAFE', fg: 'FF1E3A8A', bold: true, border: true, indent: 1 });
-      styleCell(vCell, { bg: 'FFF8FAFC', fg: 'FF1F2937', border: true, indent: 1 });
-      // Apply border to the B and D/E cells of the merged ranges too
-      ws.getCell(`B${rn}`).border = thinBorder;
-      ws.getCell(`D${rn}`).border = thinBorder;
-      ws.getCell(`E${rn}`).border = thinBorder;
+      // ── Right: session info ──────────────────────────────────────────────────
+      if (i === 0) {
+        // "SESSION INFORMATION" title merged H:I
+        ws.mergeCells(`H${rn}:I${rn}`);
+        const tc = ws.getCell(`H${rn}`);
+        tc.value = 'SESSION INFORMATION';
+        styleCell(tc, { bg: 'FF1E40AF', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
+        ws.getCell(`I${rn}`).border = thinBorder;
+      } else if (i === 1) {
+        // FIELD | VALUE column headers
+        const fh = ws.getCell(`H${rn}`);
+        const vh = ws.getCell(`I${rn}`);
+        fh.value = 'FIELD';
+        vh.value = 'VALUE';
+        styleCell(fh, { bg: 'FF1E3A8A', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
+        styleCell(vh, { bg: 'FF1E3A8A', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
+      } else if (i - 2 < infoRows.length) {
+        const [label, value] = infoRows[i - 2];
+        const lc = ws.getCell(`H${rn}`);
+        const vc = ws.getCell(`I${rn}`);
+        lc.value = label;
+        vc.value = value;
+        styleCell(lc, { bg: 'FFDBEAFE', fg: 'FF1E3A8A', bold: true, border: true, indent: 1 });
+        styleCell(vc, { bg: 'FFF8FAFC', fg: 'FF1F2937', border: true, indent: 1 });
+      }
     }
 
-    // ── Gap ────────────────────────────────────────────────────────────────────
-    rn++;
-    ws.getRow(rn).height = 12;
-
-    // ── Section header ─────────────────────────────────────────────────────────
-    rn++;
-    ws.mergeCells(`A${rn}:E${rn}`);
-    ws.getRow(rn).height = 26;
-    const secCell = ws.getCell(`A${rn}`);
-    secCell.value = 'STUDENT ATTENDANCE LIST';
-    styleCell(secCell, { bg: 'FF1E40AF', fg: 'FFFFFFFF', bold: true, size: 11, alignH: 'center' });
-
-    // ── Table header ───────────────────────────────────────────────────────────
-    rn++;
-    ws.getRow(rn).height = 22;
-    const headers = ['S.No', 'Roll No', 'Student Name', 'Timetable', 'Status'];
-    const headerCols = ['A', 'B', 'C', 'D', 'E'];
-    headers.forEach((h, i) => {
-      const cell = ws.getCell(`${headerCols[i]}${rn}`);
-      cell.value = h;
-      styleCell(cell, { bg: 'FF2563EB', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
-    });
-
-    // ── Student data rows ──────────────────────────────────────────────────────
+    // ── Empty state (no students matched) ──────────────────────────────────────
     if (allStudents.length === 0) {
-      rn++;
-      ws.getRow(rn).height = 20;
-      ws.mergeCells(`A${rn}:E${rn}`);
+      const rn = 2;
+      ws.mergeCells(`A${rn}:F${rn}`);
       const emptyCell = ws.getCell(`A${rn}`);
       emptyCell.value = 'No matching students found in Master Data for this session.';
       styleCell(emptyCell, { bg: 'FFFFF7ED', fg: 'FFB45309', alignH: 'center', border: true });
-      ws.getCell(`B${rn}`).border = thinBorder;
-      ws.getCell(`C${rn}`).border = thinBorder;
-      ws.getCell(`D${rn}`).border = thinBorder;
-      ws.getCell(`E${rn}`).border = thinBorder;
-    } else {
-      allStudents.forEach((student, idx) => {
-        rn++;
-        ws.getRow(rn).height = 18;
-        const isEven = idx % 2 === 1;
-        const rowBg  = isEven ? 'FFEFF6FF' : 'FFFFFFFF';
-        const values = [idx + 1, student.rollNumber, student.name, student.timetable || '', 'P'];
-        values.forEach((val, ci) => {
-          const cell = ws.getCell(`${headerCols[ci]}${rn}`);
-          cell.value = val;
-          styleCell(cell, {
-            bg:     rowBg,
-            fg:     'FF1F2937',
-            border: true,
-            alignH: ci === 0 || ci === 4 ? 'center' : 'left',
-            indent: ci === 0 || ci === 4 ? 0 : 1,
-          });
-        });
-      });
+      ['B', 'C', 'D', 'E', 'F'].forEach(col => { ws.getCell(`${col}${rn}`).border = thinBorder; });
     }
 
     // ── Generate buffer ────────────────────────────────────────────────────────

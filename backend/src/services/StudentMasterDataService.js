@@ -97,19 +97,36 @@ class StudentMasterDataService {
     return await StudentRepository.deleteById(id);
   }
 
-  async uploadStudents(fileBuffer) {
+  async uploadStudents(fileBuffer, academicYear = null) {
     const parsedStudents = parseStudentExcel(fileBuffer);
-    const { count, newStudents } = await StudentRepository.upsertStudents(parsedStudents);
-    const skippedCount = parsedStudents.length - count;
+
+    // Resolve academicYearId from the year name supplied by the upload form
+    let academicYearId = null;
+    if (academicYear) {
+      const yr = await prisma.academicYear.findFirst({ where: { name: academicYear } });
+      academicYearId = yr?.id ?? null;
+    }
+
+    const { count, updateCount, newStudents } = await StudentRepository.upsertStudents(parsedStudents, academicYearId);
+    const skippedCount = parsedStudents.length - count - updateCount;
+
+    const parts = [];
+    if (count > 0)        parts.push(`${count} new student(s) added${academicYear ? ` as ${academicYear}` : ''}`);
+    if (updateCount > 0)  parts.push(`${updateCount} timetable(s) updated`);
+    if (skippedCount > 0) parts.push(`${skippedCount} already existed with no changes`);
+    const message = parts.length > 0 ? parts.join(', ') + '.' : 'No changes made.';
 
     return {
       insertedCount: count,
+      updatedCount: updateCount,
       skippedCount,
       totalInFile: parsedStudents.length,
-      message: count > 0
-        ? `${count} new student(s) added. ${skippedCount} already existed and were skipped.`
-        : `All ${skippedCount} student(s) already exist — no new records created.`,
+      message,
     };
+  }
+
+  async deleteStudentsByYear(academicYear) {
+    return await StudentRepository.deleteByFilters({ academicYear });
   }
 }
 

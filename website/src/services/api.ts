@@ -20,11 +20,24 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Simple error interceptor
+// Global 401 handler: auto-logout when credentials are invalid or revoked.
+// This covers: token expiry, account deletion, and privilege revocation.
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // We can handle global 401 unauthenticated errors here if needed
+    if (
+      typeof window !== 'undefined' &&
+      error?.response?.status === 401 &&
+      // Only redirect if this wasn't the login request itself
+      !error?.config?.url?.includes('/auth/login')
+    ) {
+      localStorage.removeItem('auth_user');
+      localStorage.removeItem('auth_token');
+      // Remove cookie too (js-cookie may not be available here, use plain JS)
+      document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      window.location.href = '/login';
+    }
     return Promise.reject(error);
   }
 );
+

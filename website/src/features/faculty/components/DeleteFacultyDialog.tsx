@@ -3,6 +3,7 @@
 import React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { facultyService, Faculty } from '../api/facultyService';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 import { toast } from 'sonner';
 import { Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import {
@@ -18,13 +19,22 @@ interface Props {
 
 export function DeleteFacultyDialog({ faculty, onClose }: Props) {
   const queryClient = useQueryClient();
+  const { user, logout } = useAuth();
+
+  // Check if the faculty being deleted is the currently logged-in user
+  const isSelf = !!faculty && !!user && faculty.facultyId === user.employeeId;
 
   const deleteMutation = useMutation({
     mutationFn: () => facultyService.deleteFaculty(faculty!.id),
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: ['faculty'] });
       toast.success(`Faculty "${faculty?.facultyId}" removed from Master Data.`);
-      onClose();
+      if (isSelf) {
+        // Deleting yourself: force logout since credentials are now invalid
+        logout();
+      } else {
+        onClose();
+      }
     },
     onError: (err: any) => {
       const msg =
@@ -68,8 +78,11 @@ export function DeleteFacultyDialog({ faculty, onClose }: Props) {
             </div>
           </div>
           <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-            This faculty member will lose access to the app and will no longer be able to scan
-            student IDs or manage attendance.
+            {isSelf
+              ? 'You are deleting your own account. You will be logged out immediately and all your credentials will become invalid.'
+              : faculty.role === 'SUPER_ADMIN'
+              ? 'This will permanently remove this faculty member and revoke their Super Admin and app access.'
+              : 'This faculty member will lose access to the app and will no longer be able to scan student IDs or manage attendance.'}
           </p>
         </div>
 
@@ -93,3 +106,4 @@ export function DeleteFacultyDialog({ faculty, onClose }: Props) {
     </Dialog>
   );
 }
+

@@ -81,10 +81,18 @@ class FacultyMasterDataService {
   /**
    * Hard-delete a faculty member by their internal UUID.
    * Cascade removes their sessions and timetable entries.
+   * Also removes from SuperAdmin table if they were promoted, fully revoking all credentials.
    */
   async deleteFaculty(id) {
     const faculty = await prisma.faculty.findUnique({ where: { id } });
     if (!faculty) throw new NotFoundError('Faculty member not found.');
+
+    // Remove from SuperAdmin table as well (if they were ever promoted to super admin)
+    // This ensures website login becomes invalid immediately
+    await prisma.superAdmin.deleteMany({
+      where: { employeeId: faculty.facultyId },
+    }).catch(() => {}); // silent — they may never have been in this table
+
     return await FacultyRepository.deleteById(id);
   }
 

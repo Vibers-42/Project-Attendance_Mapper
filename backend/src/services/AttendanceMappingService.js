@@ -1,35 +1,46 @@
-const AttendanceSessionRepository = require('../repositories/AttendanceSessionRepository');
+const prisma = require('../config/prisma');
 const TimetableRepository = require('../repositories/TimetableRepository');
 const StudentRepository = require('../repositories/StudentRepository');
 const { MappingContext, MappingStatus } = require('../domain/mapping.domain');
+const { NotFoundError, ForbiddenError } = require('../utils/AppError');
 
 class AttendanceMappingService {
   /**
    * Prepares the mapping context by aggregating raw session data, timetable data, and student master data.
    * Does NOT modify any records. Read-only operation.
-   * 
-   * @param {string} sessionId - The UUID of the AttendanceSession.
+   *
+   * @param {string} sessionId  - The UUID of the AttendanceSession.
+   * @param {string} facultyId  - The UUID of the requesting faculty member (ownership check).
    * @returns {Promise<MappingContext>}
    */
-  async prepareMappingContext(sessionId) {
+  async prepareMappingContext(sessionId, facultyId) {
     if (!sessionId) {
       throw new Error('Session ID is required to prepare mapping context.');
     }
 
-    // 1. Retrieve the Attendance Session (Source of truth)
-    const session = await AttendanceSessionRepository.findById(sessionId);
+    // Fetch session with records included directly so totalScans is accurate.
+    // SESSION_INCLUDE only carries _count.records, not the records array itself.
+    const session = await prisma.attendanceSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        subject:      true,
+        room:         true,
+        academicYear: true,
+        section:      true,
+        records:      true,
+        _count:       { select: { records: true } },
+      },
+    });
+
     if (!session) {
-      const error = new Error('Attendance session not found.');
-      error.statusCode = 404;
-      throw error;
+      throw new NotFoundError('Attendance session not found.');
     }
 
-    // 2. Resolve Timetable Entry (if provided or map-able)
-    // Currently, sessions just have strings for subject/room, so this prepares the infrastructure 
-    // to map those strings to proper timetable entries in the future.
-    let timetableEntry = null;
-    
-    // 3. Resolve Student Cohort Master Data
+    // Enforce ownership: faculty can only access their own sessions.
+    if (session.facultyId !== facultyId) {
+      throw new ForbiddenError('You do not have permission to access this session.');
+    }
+
     let students = [];
     if (session.academicYearId && session.sectionId) {
       students = await StudentRepository.findAllByYearAndSection(
@@ -40,12 +51,12 @@ class AttendanceMappingService {
 
     return new MappingContext({
       session,
-      timetableEntry,
+      timetableEntry: null,
       students,
       metadata: {
-        totalScans: session.records?.length || 0,
-        totalCohortSize: students.length
-      }
+        totalScans:      session.records.length,
+        totalCohortSize: students.length,
+      },
     });
   }
 

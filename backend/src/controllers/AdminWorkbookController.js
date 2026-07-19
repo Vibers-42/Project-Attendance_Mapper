@@ -1,8 +1,6 @@
 const WorkbookGenerationService = require('../services/WorkbookGenerationService');
 const { sendSuccess } = require('../utils/apiResponse');
 const { BadRequestError } = require('../utils/AppError');
-const fs = require('fs');
-const path = require('path');
 
 class AdminWorkbookController {
   
@@ -31,21 +29,10 @@ class AdminWorkbookController {
 
   async downloadWorkbook(req, res) {
     const { id } = req.params;
-    const workbook = await WorkbookGenerationService.getWorkbook(id);
-
-    if (!fs.existsSync(workbook.filePath)) {
-      throw new BadRequestError('The physical file for this workbook no longer exists on the server.');
-    }
-
-    const fileName = path.basename(workbook.filePath);
-    res.download(workbook.filePath, fileName, (err) => {
-      if (err) {
-        console.error('Download error:', err);
-        if (!res.headersSent) {
-          res.status(500).json({ success: false, message: 'Failed to download file.' });
-        }
-      }
-    });
+    const { buffer, fileName } = await WorkbookGenerationService.getDownloadBuffer(id);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(buffer);
   }
 
   async deleteWorkbook(req, res) {

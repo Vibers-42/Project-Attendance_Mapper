@@ -50,9 +50,10 @@ class AdminSessionReportService {
       ];
     }
     if (date) {
-      const d = new Date(date);
-      const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
-      const dayEnd   = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+      const d  = new Date(date);
+      const yr = d.getUTCFullYear(), mo = d.getUTCMonth(), dy = d.getUTCDate();
+      const dayStart = new Date(Date.UTC(yr, mo, dy,  0,  0,  0,   0));
+      const dayEnd   = new Date(Date.UTC(yr, mo, dy, 23, 59, 59, 999));
       where.date = { gte: dayStart, lte: dayEnd };
     }
     if (academicYear && academicYear !== 'All') {
@@ -646,9 +647,10 @@ class AdminSessionReportService {
       ];
     }
     if (date) {
-      const d        = new Date(date);
-      const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
-      const dayEnd   = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+      const d  = new Date(date);
+      const yr = d.getUTCFullYear(), mo = d.getUTCMonth(), dy = d.getUTCDate();
+      const dayStart = new Date(Date.UTC(yr, mo, dy,  0,  0,  0,   0));
+      const dayEnd   = new Date(Date.UTC(yr, mo, dy, 23, 59, 59, 999));
       where.date     = { gte: dayStart, lte: dayEnd };
     }
     if (academicYear && academicYear !== 'All') {

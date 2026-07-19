@@ -69,7 +69,7 @@ const buildWorkbook = async (overallData, roomDataMap, sessionInfoMap) => {
       ['Students Present', students.length],
     ];
 
-    const safeRoom = roomName.substring(0, 31).replace(/[\\/?*[\]]/g, '_');
+    const safeRoom = roomName.substring(0, 31).replace(/[\\/?*[\]:|"<>]/g, '_');
     const rws = wb.addWorksheet(safeRoom);
     rws.columns = [
       { width: 6  }, // A S.No
@@ -116,7 +116,6 @@ const buildWorkbook = async (overallData, roomDataMap, sessionInfoMap) => {
         const tc = rws.getCell(`G${rn}`);
         tc.value = 'SESSION INFORMATION';
         S(tc, { bg: 'FF1E40AF', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
-        rws.getCell(`H${rn}`).border = BORDER;
       } else if (i === 1) {
         const fh = rws.getCell(`G${rn}`);
         const vh = rws.getCell(`H${rn}`);

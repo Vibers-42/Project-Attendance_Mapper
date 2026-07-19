@@ -25,7 +25,10 @@ export default function LoginPage() {
             <div className="w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
               <GraduationCap className="w-5 h-5 text-white" />
             </div>
-            <span className="text-white font-semibold text-[15px] tracking-tight">Attendance Mapper</span>
+            <div className="flex flex-col leading-tight">
+              <span className="text-white font-semibold text-[15px] tracking-tight">Attendance Mapper</span>
+              <span className="text-blue-200/60 text-[10px] tracking-wide">Department of AIML</span>
+            </div>
           </div>
         </div>
 
@@ -53,9 +56,15 @@ export default function LoginPage() {
         </div>
 
         {/* Footer */}
-        <p className="relative z-10 text-blue-200/50 text-xs">
-          © {new Date().getFullYear()} Attendance Mapper
-        </p>
+        <div className="relative z-10 space-y-1">
+          <p className="text-blue-200/50 text-xs">
+            © {new Date().getFullYear()} Vibers-42
+          </p>
+          <p className="text-blue-200/40 text-[11px] leading-relaxed">
+            Built by Vijay Chikkala, Sashank Devarakonda,<br />
+            Pavan Guvvala &amp; M.N.B Prasad Reddy
+          </p>
+        </div>
       </div>
 
       {/* ── Right Form Panel ── */}

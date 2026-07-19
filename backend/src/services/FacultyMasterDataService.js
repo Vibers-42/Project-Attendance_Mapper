@@ -87,13 +87,12 @@ class FacultyMasterDataService {
     const faculty = await prisma.faculty.findUnique({ where: { id } });
     if (!faculty) throw new NotFoundError('Faculty member not found.');
 
-    // Remove from SuperAdmin table as well (if they were ever promoted to super admin)
-    // This ensures website login becomes invalid immediately
-    await prisma.superAdmin.deleteMany({
-      where: { employeeId: faculty.facultyId },
-    }).catch(() => {}); // silent — they may never have been in this table
-
-    return await FacultyRepository.deleteById(id);
+    // Atomic: remove from SuperAdmin table and Faculty table together.
+    // deleteMany is a no-op when no rows match, so no catch needed.
+    return await prisma.$transaction(async (tx) => {
+      await tx.superAdmin.deleteMany({ where: { employeeId: faculty.facultyId } });
+      return tx.faculty.delete({ where: { id } });
+    });
   }
 
   /**

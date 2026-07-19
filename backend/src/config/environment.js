@@ -6,6 +6,11 @@ dotenv.config();
 const environment = {
   port: process.env.PORT || 3000,
   nodeEnv: process.env.NODE_ENV || 'development',
+  // Comma-separated list of origins the CORS policy allows (e.g. "http://localhost:3001,https://app.example.com").
+  // Falls back to localhost:3001 for local development when the variable is unset.
+  allowedOrigins: process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : ['http://localhost:3001'],
   db: {
     databaseUrl: process.env.DATABASE_URL || '',
     directUrl: process.env.DIRECT_URL || '',

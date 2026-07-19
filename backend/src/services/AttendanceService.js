@@ -39,8 +39,8 @@ class AttendanceService {
       roomId = room.id;
     }
 
-    // Strip frontend-only text fields that have no direct DB column
-    const { subject, year, roomNumber: _r, subjectId: _s, academicYearId: _a, ...rest } = data;
+    // Strip frontend-only text fields and id (prevent client-controlled primary key).
+    const { subject, year, roomNumber: _r, subjectId: _s, academicYearId: _a, id: _id, ...rest } = data;
 
     const sessionData = {
       ...rest,

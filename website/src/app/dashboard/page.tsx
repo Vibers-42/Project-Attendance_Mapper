@@ -89,6 +89,15 @@ export default function DashboardPage() {
         </section>
 
       </main>
+
+      <footer className="border-t border-zinc-200 dark:border-zinc-800 py-4 mt-auto">
+        <div className="text-center space-y-0.5">
+          <p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-500">Department of AIML</p>
+          <p className="text-[10px] text-zinc-400 dark:text-zinc-600">
+            Built by Vijay Chikkala, Sashank Devarakonda, Pavan Guvvala &amp; M.N.B Prasad Reddy
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }

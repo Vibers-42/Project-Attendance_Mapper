@@ -68,14 +68,18 @@ void main() async {
   final submissionRepository = AttendanceSubmissionRepository(apiService);
   final queryRepository = AttendanceQueryRepository(apiService);
   final localRepository = LocalAttendanceRepository();
-  
+
   final recoveryService = SessionRecoveryService(localRepository);
-  
+
+  // Create AuthProvider before runApp so we can wire the 401 auto-logout callback.
+  final authProvider = AuthProvider(authRepository);
+  apiService.setOnUnauthorized(authProvider.logout);
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: configService),
-        ChangeNotifierProvider(create: (_) => AuthProvider(authRepository)),
+        ChangeNotifierProvider.value(value: authProvider),
         ChangeNotifierProvider(create: (_) => FacultyAccountProvider(authRepository)),
         Provider.value(value: recoveryService),
         ChangeNotifierProvider(create: (_) => AttendanceProvider(

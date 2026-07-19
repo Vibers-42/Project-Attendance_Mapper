@@ -12,9 +12,9 @@ class MappingController {
     }
 
     const { sessionId } = value;
-    
+
     // 1. Prepare context (gather raw data)
-    const context = await AttendanceMappingService.prepareMappingContext(sessionId);
+    const context = await AttendanceMappingService.prepareMappingContext(sessionId, req.user.id);
     
     // 2. Validate context (determine status & warnings)
     const { status, warnings } = AttendanceMappingService.validateContext(context);
@@ -39,7 +39,7 @@ class MappingController {
       throw err;
     }
 
-    const context = await AttendanceMappingService.prepareMappingContext(value.sessionId);
+    const context = await AttendanceMappingService.prepareMappingContext(value.sessionId, req.user.id);
     const { status, warnings } = AttendanceMappingService.validateContext(context);
 
     return sendSuccess(res, {

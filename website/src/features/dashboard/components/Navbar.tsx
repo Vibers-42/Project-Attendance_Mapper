@@ -43,9 +43,14 @@ export function Navbar() {
           <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-sm">
             <GraduationCap className="h-4.5 w-4.5 text-white" />
           </div>
-          <span className="font-semibold text-[14.5px] tracking-tight text-zinc-900 dark:text-zinc-100">
-            Attendance Mapper
-          </span>
+          <div className="flex flex-col leading-tight">
+            <span className="font-semibold text-[14.5px] tracking-tight text-zinc-900 dark:text-zinc-100">
+              Attendance Mapper
+            </span>
+            <span className="text-[10px] text-zinc-400 dark:text-zinc-500 tracking-wide">
+              Dept. of AIML
+            </span>
+          </div>
         </Link>
 
         {/* Nav links */}

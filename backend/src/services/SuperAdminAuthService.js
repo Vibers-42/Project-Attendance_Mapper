@@ -162,13 +162,34 @@ class SuperAdminAuthService {
       };
     }
 
-    // Default: look up in SuperAdmin table (source = 'superadmin' or legacy tokens without source)
+    // source === 'superadmin' or null (legacy token minted before the source claim was added)
     const admin = await superAdminRepository.findById(id);
-    if (!admin || !admin.isActive) {
-      throw new UnauthorizedError('Super Admin account not found or inactive.');
+    if (admin) {
+      if (!admin.isActive) {
+        throw new UnauthorizedError('Super Admin account not found or inactive.');
+      }
+      const { passwordHash: _, ...safeAdmin } = admin;
+      return { ...safeAdmin, source: 'superadmin' };
     }
-    const { passwordHash: _, ...safeAdmin } = admin;
-    return { ...safeAdmin, source: 'superadmin' };
+
+    // Legacy null-source token issued for a Faculty-table user — try Faculty as fallback.
+    if (source === null) {
+      const faculty = await prisma.faculty.findUnique({ where: { id } });
+      if (faculty?.isActive && faculty.role === 'SUPER_ADMIN') {
+        const { password: _, ...safe } = faculty;
+        return {
+          id:           safe.id,
+          employeeId:   safe.facultyId,
+          employeeName: safe.name,
+          role:         safe.role,
+          isActive:     safe.isActive,
+          lastLoginAt:  safe.lastLoginAt,
+          source:       'faculty',
+        };
+      }
+    }
+
+    throw new UnauthorizedError('Super Admin account not found or inactive.');
   }
 }
 

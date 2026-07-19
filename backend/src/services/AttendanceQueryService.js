@@ -18,9 +18,12 @@ class AttendanceQueryService {
       where.status = queryParams.status.toUpperCase();
     }
     if (queryParams.startDate && queryParams.endDate) {
+      // endDate is inclusive — extend to end of that UTC day so single-day queries work.
+      const endOfDay = new Date(queryParams.endDate);
+      endOfDay.setUTCHours(23, 59, 59, 999);
       where.date = {
         gte: new Date(queryParams.startDate),
-        lt: new Date(queryParams.endDate),
+        lte: endOfDay,
       };
     } else if (queryParams.date) {
       where.date = new Date(queryParams.date);

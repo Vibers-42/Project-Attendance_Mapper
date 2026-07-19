@@ -26,7 +26,7 @@ const authenticate = (req, res, next) => {
       id:        decoded.id,
       facultyId: decoded.facultyId,
       role:      decoded.role,
-      source:    decoded.source || 'superadmin',  // 'superadmin' | 'faculty' — which table authenticated this user
+      source:    decoded.source ?? null,  // null for legacy tokens minted before this field was added
     };
     next();
   } catch (err) {

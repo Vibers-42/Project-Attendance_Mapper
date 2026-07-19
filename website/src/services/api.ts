@@ -1,9 +1,10 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
-
+// Use a relative base URL so all requests go through the Next.js rewrite proxy
+// (/api/v1/* → BACKEND_URL/api/v1/*). This works identically in dev and on Vercel
+// without any NEXT_PUBLIC_ env vars or CORS configuration.
 export const apiClient = axios.create({
-  baseURL: API_URL,
+  baseURL: '/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },

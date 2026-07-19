@@ -11,7 +11,7 @@ class ApiConfigService with ChangeNotifier {
   // Can also be overridden at build time: --dart-define=BACKEND_URL=https://...
   static const _defaultUrl = String.fromEnvironment(
     'BACKEND_URL',
-    defaultValue: 'http://192.168.1.8:3000/api/v1',
+    defaultValue: 'https://attendancemapper-backend.onrender.com/api/v1',
   );
 
   final SharedPreferences _prefs;

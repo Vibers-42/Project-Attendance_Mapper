@@ -26,8 +26,8 @@ export function DeleteStudentDialog({ student, onClose }: Props) {
   const deleteMutation = useMutation({
     mutationFn: () => studentService.deleteStudent(student!.id),
     onSuccess: () => {
-      // Flush all cached student pages — the deleted student must not linger
-      queryClient.removeQueries({ queryKey: ['students'] });
+      // Invalidate (background refetch) instead of removeQueries (full flush + spinner)
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       toast.success(
         `Student "${student?.rollNumber}" has been removed from Master Data.`
       );

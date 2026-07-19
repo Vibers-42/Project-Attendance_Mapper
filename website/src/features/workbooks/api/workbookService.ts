@@ -8,7 +8,8 @@ export interface WorkbookRecord {
   academicYear: { id: string; name: string } | null;
   topic: string | null;
   date: string;          // ISO date string
-  sessionCount: number;  // # of rooms/sessions making up this class
+  sessionCount: number;  // total # of sessions (may include multiple in same room)
+  roomCount: number;     // # of DISTINCT rooms across all sessions in this workbook
   totalRecords: number;  // total attendance records across all sessions
 }
 

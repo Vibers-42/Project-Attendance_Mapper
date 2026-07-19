@@ -445,8 +445,8 @@ export function WorkbookTable() {
                           <div className="flex items-center gap-2">
                             <BookOpen className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                             <span className="truncate">{workbook.workbookName}</span>
-                            {workbook.sessionCount > 1 && (
-                              <span className="shrink-0 text-xs text-zinc-400 font-normal">({workbook.sessionCount} rooms)</span>
+                            {workbook.totalRecords > 0 && workbook.roomCount > 1 && (
+                              <span className="shrink-0 text-xs text-zinc-400 font-normal">({workbook.roomCount} rooms)</span>
                             )}
                           </div>
                         </td>
@@ -507,7 +507,7 @@ export function WorkbookTable() {
             </div>
             <div className="flex items-center gap-2 text-sm text-zinc-500">
               <span>Go to</span>
-              <Input type="number" min={1} max={totalPages} value={jumpValue} onChange={(e) => setJumpValue(e.target.value)} onKeyDown={handleJump} placeholder="…" className="w-16 h-8 text-center text-sm px-2" />
+              <Input id="workbook-page-jump" type="number" min={1} max={totalPages} value={jumpValue} onChange={(e) => setJumpValue(e.target.value)} onKeyDown={handleJump} placeholder="…" className="w-16 h-8 text-center text-sm px-2 bg-white dark:bg-zinc-900" />
               <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => { const n = parseInt(jumpValue); if (!isNaN(n)) goTo(n); }}>Go</Button>
             </div>
           </div>

@@ -111,6 +111,7 @@ model Student {
   @@index([academicYearId, sectionId])
   @@index([departmentId])
   @@index([status])
+  @@index([status, academicYearId]) // fast student list filtered by status + year
 }
 
 model AttendanceSession {
@@ -146,6 +147,9 @@ model AttendanceSession {
   @@index([date])
   @@index([facultyId])
   @@index([academicYearId, sectionId])
+  @@index([topic])                      // listWorkbooks filters by topic
+  @@index([academicYearId, date])       // downloadWorkbook date-range + year filter
+  @@index([status])                     // WorkbookGenerationService filters by status
 }
 
 model AttendanceRecord {
@@ -161,6 +165,8 @@ model AttendanceRecord {
 
   // Prevents duplicate scans for the same student in the same session
   @@unique([sessionId, studentRollNumber])
+  @@index([sessionId])          // fast lookup of all records for a session (workbook gen)
+  @@index([studentRollNumber])  // fast lookup of all records for a student
 }
 
 enum DayOfWeek {

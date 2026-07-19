@@ -29,14 +29,13 @@ const buildWorkbook = async (overallData, roomDataMap, sessionInfoMap) => {
     { width: 18 }, // B Roll No
     { width: 32 }, // C Student Name
     { width: 15 }, // D Timetable
-    { width: 10 }, // E Present
-    { width: 10 }, // F Absent
+    { width: 18 }, // E Attendance Status
   ];
 
-  const oCols = ['A','B','C','D','E','F'];
+  const oCols = ['A','B','C','D','E'];
   // Header
   ows.getRow(1).height = 22;
-  ['S.No','Roll No','Student Name','Timetable','Present','Absent'].forEach((h, ci) => {
+  ['S.No','Roll No','Student Name','Timetable','Attendance Status'].forEach((h, ci) => {
     const cell = ows.getCell(`${oCols[ci]}1`);
     cell.value = h;
     S(cell, { bg: 'FF2563EB', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
@@ -46,11 +45,12 @@ const buildWorkbook = async (overallData, roomDataMap, sessionInfoMap) => {
     const rn = idx + 2;
     ows.getRow(rn).height = 18;
     const bg  = idx % 2 === 1 ? 'FFEFF6FF' : 'FFFFFFFF';
-    const vals = [row['S.No'], row['Roll No'], row['Student Name'], row['Timetable'], row['Present'], row['Absent']];
+    const vals = [row['S.No'], row['Roll No'], row['Student Name'], row['Timetable'], row['Attendance Status']];
     vals.forEach((val, ci) => {
       const cell = ows.getCell(`${oCols[ci]}${rn}`);
       cell.value = val;
-      S(cell, { bg, fg: 'FF1F2937', border: true, alignH: ci === 0 || ci >= 4 ? 'center' : 'left', indent: ci === 0 || ci >= 4 ? 0 : 1 });
+      // S.No (ci=0) and Attendance Status (ci=4) are centered; rest left-aligned with indent
+      S(cell, { bg, fg: 'FF1F2937', border: true, alignH: ci === 0 || ci === 4 ? 'center' : 'left', indent: ci === 0 || ci === 4 ? 0 : 1 });
     });
   });
 
@@ -76,14 +76,13 @@ const buildWorkbook = async (overallData, roomDataMap, sessionInfoMap) => {
       { width: 18 }, // B Roll No
       { width: 32 }, // C Student Name
       { width: 15 }, // D Timetable
-      { width: 10 }, // E Present
-      { width: 10 }, // F Absent
-      { width: 3  }, // G gap
-      { width: 22 }, // H Field
-      { width: 24 }, // I Value
+      { width: 18 }, // E Attendance Status
+      { width: 3  }, // F gap
+      { width: 22 }, // G Field
+      { width: 24 }, // H Value
     ];
 
-    const sCols     = ['A','B','C','D','E','F'];
+    const sCols     = ['A','B','C','D','E'];
     const totalRows = Math.max(1 + students.length, 2 + infoRows.length);
 
     for (let i = 0; i < totalRows; i++) {
@@ -92,7 +91,7 @@ const buildWorkbook = async (overallData, roomDataMap, sessionInfoMap) => {
 
       // Left: student table
       if (i === 0) {
-        ['S.No','Roll No','Student Name','Timetable','Present','Absent'].forEach((h, ci) => {
+        ['S.No','Roll No','Student Name','Timetable','Attendance Status'].forEach((h, ci) => {
           const cell = rws.getCell(`${sCols[ci]}${rn}`);
           cell.value = h;
           S(cell, { bg: 'FF2563EB', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
@@ -101,32 +100,33 @@ const buildWorkbook = async (overallData, roomDataMap, sessionInfoMap) => {
         const student = students[i - 1];
         if (student) {
           const bg   = (i - 1) % 2 === 1 ? 'FFEFF6FF' : 'FFFFFFFF';
-          const vals = [student['S.No'], student['Roll No'], student['Student Name'], student['Timetable'], student['Present'] ?? 'P', student['Absent'] ?? ''];
+          const vals = [student['S.No'], student['Roll No'], student['Student Name'], student['Timetable'], student['Attendance Status']];
           vals.forEach((val, ci) => {
             const cell = rws.getCell(`${sCols[ci]}${rn}`);
             cell.value = val;
-            S(cell, { bg, fg: 'FF1F2937', border: true, alignH: ci === 0 || ci >= 4 ? 'center' : 'left', indent: ci === 0 || ci >= 4 ? 0 : 1 });
+            // S.No (ci=0) and Attendance Status (ci=4) are centered; rest left-aligned with indent
+            S(cell, { bg, fg: 'FF1F2937', border: true, alignH: ci === 0 || ci === 4 ? 'center' : 'left', indent: ci === 0 || ci === 4 ? 0 : 1 });
           });
         }
       }
 
-      // Right: session info
+      // Right: session info — column letters shift one left (G→F gap removed, now F=gap, G=Field, H=Value)
       if (i === 0) {
-        rws.mergeCells(`H${rn}:I${rn}`);
-        const tc = rws.getCell(`H${rn}`);
+        rws.mergeCells(`G${rn}:H${rn}`);
+        const tc = rws.getCell(`G${rn}`);
         tc.value = 'SESSION INFORMATION';
         S(tc, { bg: 'FF1E40AF', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
-        rws.getCell(`I${rn}`).border = BORDER;
+        rws.getCell(`H${rn}`).border = BORDER;
       } else if (i === 1) {
-        const fh = rws.getCell(`H${rn}`);
-        const vh = rws.getCell(`I${rn}`);
+        const fh = rws.getCell(`G${rn}`);
+        const vh = rws.getCell(`H${rn}`);
         fh.value = 'FIELD';  vh.value = 'VALUE';
         S(fh, { bg: 'FF1E3A8A', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
         S(vh, { bg: 'FF1E3A8A', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
       } else if (i - 2 < infoRows.length) {
         const [label, value] = infoRows[i - 2];
-        const lc = rws.getCell(`H${rn}`);
-        const vc = rws.getCell(`I${rn}`);
+        const lc = rws.getCell(`G${rn}`);
+        const vc = rws.getCell(`H${rn}`);
         lc.value = label;  vc.value = value;
         S(lc, { bg: 'FFDBEAFE', fg: 'FF1E3A8A', bold: true, border: true, indent: 1 });
         S(vc, { bg: 'FFF8FAFC', fg: 'FF1F2937', border: true, indent: 1 });

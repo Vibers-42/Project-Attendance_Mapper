@@ -261,7 +261,7 @@ export function ManageSuperAdminModal({ isOpen, onClose }: Props) {
       )}
 
       <Dialog open={isOpen} onOpenChange={(o) => !o && handleClose()}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
 
           {/* Header */}
           <div className="px-6 pt-6 pb-4 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
@@ -408,13 +408,13 @@ export function ManageSuperAdminModal({ isOpen, onClose }: Props) {
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex-shrink-0 flex items-center justify-between gap-3 bg-zinc-50 dark:bg-zinc-950/60">
-            <span className="text-sm text-zinc-500">
+          <div className="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex-shrink-0 space-y-3 bg-zinc-50 dark:bg-zinc-950/60">
+            <p className="text-sm text-zinc-500 font-medium">
               {selectedIds.size === 0
-                ? `${tab === 'grant' ? 'Select faculty to promote' : 'Select Super Admins to revoke'}`
+                ? (tab === 'grant' ? 'Select faculty to promote' : 'Select Super Admins to revoke')
                 : `${selectedIds.size} member(s) selected`}
-            </span>
-            <div className="flex gap-2">
+            </p>
+            <div className="flex items-center justify-end gap-2">
               <Button variant="outline" onClick={handleClose} disabled={isPending}>
                 Cancel
               </Button>

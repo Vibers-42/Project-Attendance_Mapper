@@ -505,7 +505,7 @@ export function SessionTable() {
             </div>
             <div className="flex items-center gap-2 text-sm text-zinc-500">
               <span>Go to</span>
-              <Input type="number" min={1} max={totalPages} value={jumpValue} onChange={(e) => setJumpValue(e.target.value)} onKeyDown={handleJump} placeholder="…" className="w-16 h-8 text-center text-sm px-2" />
+              <Input id="session-page-jump" type="number" min={1} max={totalPages} value={jumpValue} onChange={(e) => setJumpValue(e.target.value)} onKeyDown={handleJump} placeholder="…" className="w-16 h-8 text-center text-sm px-2 bg-white dark:bg-zinc-900" />
               <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => { const n = parseInt(jumpValue); if (!isNaN(n)) goTo(n); }}>Go</Button>
             </div>
           </div>

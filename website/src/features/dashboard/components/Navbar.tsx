@@ -24,6 +24,13 @@ export function Navbar() {
     .join('')
     .toUpperCase();
 
+  const hasValidName = !!user?.employeeName && 
+    user.employeeName.toLowerCase() !== 'super admin' && 
+    user.employeeName.toLowerCase() !== 'superadmin';
+
+  const displayedName = hasValidName ? user.employeeName : 'Super Admin';
+  const displayedId = user?.employeeId ? `(${user.employeeId})` : '';
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-zinc-200/70 dark:border-zinc-800/70 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md">
       <div className="container mx-auto flex items-center gap-6 px-4 sm:px-8" style={{ height: '60px' }}>
@@ -70,9 +77,19 @@ export function Navbar() {
             <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
               <span className="text-[10.5px] font-bold text-white">{initials}</span>
             </div>
-            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300 max-w-[140px] truncate leading-none">
-              {user?.employeeName || 'Super Admin'}
-            </span>
+            <div className="flex flex-col justify-center gap-0.5 max-w-[160px]">
+              <div className="flex items-center gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300 leading-none w-full">
+                <span className="truncate min-w-0">{displayedName}</span>
+                {displayedId && (
+                  <span className="shrink-0 whitespace-nowrap">{displayedId}</span>
+                )}
+              </div>
+              {hasValidName && (
+                <span className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-none">
+                  superadmin
+                </span>
+              )}
+            </div>
           </div>
 
           <Button

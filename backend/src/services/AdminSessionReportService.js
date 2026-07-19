@@ -60,13 +60,19 @@ class AdminSessionReportService {
     }
 
     // ── Fetch ALL matching sessions (we group in memory) ──────────────────────
+    // select only what's needed for grouping — no heavy text fields
     const allSessions = await prisma.attendanceSession.findMany({
       where,
       orderBy: { date: 'desc' },
-      include: {
-        academicYear: { select: { id: true, name: true } },
-        subject:      { select: { id: true, name: true } },
-        _count:       { select: { records: true } },
+      select: {
+        id:            true,
+        date:          true,
+        topic:         true,
+        academicYearId:true,
+        roomId:        true,
+        academicYear:  { select: { id: true, name: true } },
+        subject:       { select: { name: true } },
+        _count:        { select: { records: true } },
       },
     });
 
@@ -94,12 +100,15 @@ class AdminSessionReportService {
           date:         session.date,
           sessionCount: 0,
           totalRecords: 0,
+          _roomIds:     new Set(), // track unique rooms (multiple sessions can share one room)
         });
       }
 
       const group = groupMap.get(groupKey);
       group.sessionCount  += 1;
       group.totalRecords  += session._count.records;
+      // roomId may be null for sessions without an assigned room — treat each null as unique-less
+      if (session.roomId) group._roomIds.add(session.roomId);
     }
 
     // ── Convert map to array and build workbook records ───────────────────────
@@ -110,6 +119,7 @@ class AdminSessionReportService {
       topic:        g.topic,
       date:         g.date,
       sessionCount: g.sessionCount,
+      roomCount:    g._roomIds.size, // number of DISTINCT rooms used in this workbook
       totalRecords: g.totalRecords,
     }));
 
@@ -203,12 +213,18 @@ class AdminSessionReportService {
     const sessions = await prisma.attendanceSession.findMany({
       where,
       orderBy: { createdAt: 'asc' },
-      include: {
-        faculty:      true,
-        room:         true,
-        subject:      true,
-        academicYear: true,
-        records:      true,
+      select: {
+        id:          true,
+        date:        true,
+        topic:       true,
+        sessionTime: true,
+        labIncharge: true,
+        faculty:     { select: { id: true, facultyId: true, name: true } },
+        room:        { select: { id: true, name: true } },
+        subject:     { select: { id: true, name: true } },
+        academicYear:{ select: { id: true, name: true } },
+        // Only fetch the roll number from records — that's all we need to build the attendance sets
+        records:     { select: { studentRollNumber: true } },
       },
     });
 
@@ -225,11 +241,8 @@ class AdminSessionReportService {
       );
     }
 
-    // ── 5. Determine academic year context ────────────────────────────────────
-    const acYear = sessions[0].academicYear;
-
     // ── 6. Build the UNION of all present roll numbers across all sessions ─────
-    // (done before student query so we can use it as a fallback filter)
+    // Run student query in parallel with building the set — saves one serial round-trip.
     const presentRollNumbers = new Set();
     for (const session of sessions) {
       for (const record of session.records) {
@@ -238,6 +251,7 @@ class AdminSessionReportService {
     }
 
     // ── 7. Load ALL students for this academic year, sorted by timetable ──────
+    const acYear = sessions[0].academicYear;
     const studentWhere = { status: 'ACTIVE' };
     if (acYear?.id) {
       studentWhere.academicYearId = acYear.id;
@@ -265,12 +279,11 @@ class AdminSessionReportService {
     const overallData = allStudents.map(student => {
       const isPresent = presentRollNumbers.has(student.rollNumber);
       return {
-        'S.No':         sno++,
-        'Roll No':      student.rollNumber,
-        'Student Name': student.name,
-        'Timetable':    student.timetable || '',
-        'Present':      isPresent ? 'P' : '',
-        'Absent':       isPresent ? '' : 'A',
+        'S.No':              sno++,
+        'Roll No':           student.rollNumber,
+        'Student Name':      student.name,
+        'Timetable':         student.timetable || '',
+        'Attendance Status': isPresent ? 'P' : 'A',
       };
     });
 
@@ -296,12 +309,11 @@ class AdminSessionReportService {
 
       let ttSno = 1;
       roomDataMap[sheetKey] = presentStudents.map(student => ({
-        'S.No':         ttSno++,
-        'Roll No':      student.rollNumber,
-        'Student Name': student.name,
-        'Timetable':    student.timetable || '',
-        'Present':      'P',
-        'Absent':       '',
+        'S.No':              ttSno++,
+        'Roll No':           student.rollNumber,
+        'Student Name':      student.name,
+        'Timetable':         student.timetable || '',
+        'Attendance Status': 'P',
       }));
 
       sessionInfoMap[sheetKey] = {
@@ -426,17 +438,16 @@ class AdminSessionReportService {
     const workbook = new ExcelJS.Workbook();
     const ws       = workbook.addWorksheet('Session Report', { pageSetup: { fitToPage: true } });
 
-    // Columns: A-F = student table, G = gap, H-I = session info
+    // Columns: A-E = student table, F = gap, G-H = session info
     ws.columns = [
       { width: 6  },  // A: S.No
       { width: 20 },  // B: Roll No
       { width: 32 },  // C: Student Name
       { width: 15 },  // D: Timetable
-      { width: 12 },  // E: Present
-      { width: 12 },  // F: Absent
-      { width: 3  },  // G: gap
-      { width: 22 },  // H: Field
-      { width: 24 },  // I: Value
+      { width: 18 },  // E: Attendance Status
+      { width: 3  },  // F: gap
+      { width: 22 },  // G: Field
+      { width: 24 },  // H: Value
     ];
 
     // ── Shared style helpers ───────────────────────────────────────────────────
@@ -468,8 +479,8 @@ class AdminSessionReportService {
       ['Session Time',     session.sessionTime        || 'N/A'],
       ['Students Present', presentRollNumbers.size],
     ];
-    // Right side: row 1 = title (H:I merged), row 2 = FIELD/VALUE header, rows 3-9 = data
-    const studentCols = ['A', 'B', 'C', 'D', 'E', 'F'];
+    // Right side: row 1 = title (G:H merged), row 2 = FIELD/VALUE header, rows 3-9 = data
+    const studentCols = ['A', 'B', 'C', 'D', 'E'];
     const totalRows   = Math.max(1 + allStudents.length, 2 + infoRows.length);
 
     for (let i = 0; i < totalRows; i++) {
@@ -479,7 +490,7 @@ class AdminSessionReportService {
       // ── Left: student table ──────────────────────────────────────────────────
       if (i === 0) {
         // Header row
-        const hdrs = ['S.No', 'Roll No', 'Student Name', 'Timetable', 'Present', 'Absent'];
+        const hdrs = ['S.No', 'Roll No', 'Student Name', 'Timetable', 'Attendance Status'];
         hdrs.forEach((h, ci) => {
           const cell = ws.getCell(`${studentCols[ci]}${rn}`);
           cell.value = h;
@@ -490,14 +501,15 @@ class AdminSessionReportService {
         if (student) {
           const isEven = (i - 1) % 2 === 1;
           const rowBg  = isEven ? 'FFEFF6FF' : 'FFFFFFFF';
-          const vals   = [i, student.rollNumber, student.name, student.timetable || '', 'P', ''];
+          const vals   = [i, student.rollNumber, student.name, student.timetable || '', 'P'];
           vals.forEach((val, ci) => {
             const cell = ws.getCell(`${studentCols[ci]}${rn}`);
             cell.value = val;
             styleCell(cell, {
               bg: rowBg, fg: 'FF1F2937', border: true,
-              alignH: ci === 0 || ci >= 4 ? 'center' : 'left',
-              indent: ci === 0 || ci >= 4 ? 0 : 1,
+              // S.No (ci=0) and Attendance Status (ci=4) are centered
+              alignH: ci === 0 || ci === 4 ? 'center' : 'left',
+              indent: ci === 0 || ci === 4 ? 0 : 1,
             });
           });
         }
@@ -505,24 +517,24 @@ class AdminSessionReportService {
 
       // ── Right: session info ──────────────────────────────────────────────────
       if (i === 0) {
-        // "SESSION INFORMATION" title merged H:I
-        ws.mergeCells(`H${rn}:I${rn}`);
-        const tc = ws.getCell(`H${rn}`);
+        // "SESSION INFORMATION" title merged G:H
+        ws.mergeCells(`G${rn}:H${rn}`);
+        const tc = ws.getCell(`G${rn}`);
         tc.value = 'SESSION INFORMATION';
         styleCell(tc, { bg: 'FF1E40AF', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
-        ws.getCell(`I${rn}`).border = thinBorder;
+        ws.getCell(`H${rn}`).border = thinBorder;
       } else if (i === 1) {
         // FIELD | VALUE column headers
-        const fh = ws.getCell(`H${rn}`);
-        const vh = ws.getCell(`I${rn}`);
+        const fh = ws.getCell(`G${rn}`);
+        const vh = ws.getCell(`H${rn}`);
         fh.value = 'FIELD';
         vh.value = 'VALUE';
         styleCell(fh, { bg: 'FF1E3A8A', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
         styleCell(vh, { bg: 'FF1E3A8A', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
       } else if (i - 2 < infoRows.length) {
         const [label, value] = infoRows[i - 2];
-        const lc = ws.getCell(`H${rn}`);
-        const vc = ws.getCell(`I${rn}`);
+        const lc = ws.getCell(`G${rn}`);
+        const vc = ws.getCell(`H${rn}`);
         lc.value = label;
         vc.value = value;
         styleCell(lc, { bg: 'FFDBEAFE', fg: 'FF1E3A8A', bold: true, border: true, indent: 1 });
@@ -533,11 +545,11 @@ class AdminSessionReportService {
     // ── Empty state (no students matched) ──────────────────────────────────────
     if (allStudents.length === 0) {
       const rn = 2;
-      ws.mergeCells(`A${rn}:F${rn}`);
+      ws.mergeCells(`A${rn}:E${rn}`);
       const emptyCell = ws.getCell(`A${rn}`);
       emptyCell.value = 'No matching students found in Master Data for this session.';
       styleCell(emptyCell, { bg: 'FFFFF7ED', fg: 'FFB45309', alignH: 'center', border: true });
-      ['B', 'C', 'D', 'E', 'F'].forEach(col => { ws.getCell(`${col}${rn}`).border = thinBorder; });
+      ['B', 'C', 'D', 'E'].forEach(col => { ws.getCell(`${col}${rn}`).border = thinBorder; });
     }
 
     // ── Generate buffer ────────────────────────────────────────────────────────

@@ -132,13 +132,13 @@ export function StudentTable() {
     queryKey: ['students', page, debouncedSearch, yearFilter],
     queryFn: () => studentService.getStudents(page, PAGE_SIZE, debouncedSearch, yearFilter),
     placeholderData: (prev) => prev,
-    staleTime: 30_000,
     retry: 2,
   });
 
   const bulkDeleteMutation = useMutation({
     mutationFn: () => studentService.deleteStudentsByYear(yearFilter),
     onSuccess: (result) => {
+      // Bulk delete: flush cache fully since all pages are now invalid (year cohort removed)
       queryClient.removeQueries({ queryKey: ['students'] });
       toast.success(`${result.count} student(s) deleted from ${yearFilter}.`);
       setBulkDelOpen(false);

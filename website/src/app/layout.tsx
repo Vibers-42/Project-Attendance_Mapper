@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Attendance Admin Dashboard",
+  title: "Attendance Mapper",
   description: "Admin dashboard for Attendance Mapper",
 };
 

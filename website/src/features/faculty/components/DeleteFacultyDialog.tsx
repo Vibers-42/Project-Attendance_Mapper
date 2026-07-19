@@ -27,7 +27,7 @@ export function DeleteFacultyDialog({ faculty, onClose }: Props) {
   const deleteMutation = useMutation({
     mutationFn: () => facultyService.deleteFaculty(faculty!.id),
     onSuccess: () => {
-      queryClient.removeQueries({ queryKey: ['faculty'] });
+      queryClient.invalidateQueries({ queryKey: ['faculty'] });
       toast.success(`Faculty "${faculty?.facultyId}" removed from Master Data.`);
       if (isSelf) {
         // Deleting yourself: force logout since credentials are now invalid

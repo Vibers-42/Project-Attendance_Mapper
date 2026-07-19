@@ -44,7 +44,7 @@ export function AddStudentModal({ isOpen, onClose }: Props) {
         timetable: form.timetable.trim(),
       }),
     onSuccess: (student) => {
-      queryClient.removeQueries({ queryKey: ['students'] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       toast.success(`Student "${student.rollNumber}" added to Master Data.`);
       handleClose();
     },

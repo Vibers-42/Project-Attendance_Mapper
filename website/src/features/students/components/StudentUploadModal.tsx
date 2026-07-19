@@ -78,8 +78,8 @@ export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps)
       return studentService.uploadStudents(file, selectedYear);
     },
     onSuccess: (data) => {
-      // Remove all cached student pages so the table always shows fresh data
-      queryClient.removeQueries({ queryKey: ['students'] });
+      // Invalidate cache so the table refreshes in the background (no full-page spinner)
+      queryClient.invalidateQueries({ queryKey: ['students'] });
       toast.success(data.message || 'Students uploaded successfully!');
       handleClose();
     },

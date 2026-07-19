@@ -38,7 +38,7 @@ export function AddFacultyModal({ isOpen, onClose }: Props) {
         name:      form.name.trim(),
       }),
     onSuccess: (faculty) => {
-      queryClient.removeQueries({ queryKey: ['faculty'] });
+      queryClient.invalidateQueries({ queryKey: ['faculty'] });
       toast.success(`Faculty "${faculty.facultyId}" added. Default login: ${faculty.facultyId} / webcap`);
       handleClose();
     },

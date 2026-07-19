@@ -313,12 +313,17 @@ class AdminSessionReportService {
     }
 
     // ── 10. Build canonical workbook name ─────────────────────────────────────
+    // Derive topic from subject name if session.topic is null (Flutter app creates sessions
+    // with topic stored in the subject relation, not the topic field directly).
+    const resolvedTopic = sessions[0].topic
+      || this._deriveTopicFromSubject(sessions[0].subject?.name);
+
     const workbookName = this._buildWorkbookName({
       academicYear: acYear,
-      topic:        sessions[0].topic,
+      topic:        resolvedTopic,
       date:         sessions[0].date,
     });
-    const safeFileName = workbookName.replace(/[/\\?*[\]:|"<>]/g, '_');
+    const safeFileName = workbookName.replace(/[/\\?*[\]:|">]/g, '_');
     const fileName = `${safeFileName}.xlsx`;
 
     // ── 11. Generate in-memory buffer ─────────────────────────────────────────

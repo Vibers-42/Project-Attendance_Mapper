@@ -65,6 +65,27 @@ export interface WorkbookFilters {
   limit?: number;
 }
 
+// ─── Helper: parse error body from blob responses ────────────────────────────
+// When axios responseType='blob' encounters an HTTP error, the error body is
+// also delivered as a Blob — so err.response.data.message won't exist.
+// This helper reads the blob as text, parses the JSON, and rethrows with a
+// real error message so the UI can display something meaningful.
+async function throwBlobError(err: any): Promise<never> {
+  if (err?.response?.data instanceof Blob) {
+    try {
+      const text = await err.response.data.text();
+      const json = JSON.parse(text);
+      const msg  = json?.message || json?.error || `Server error (${err.response.status})`;
+      const enhanced = new Error(msg) as any;
+      enhanced.response = { ...err.response, data: json };
+      throw enhanced;
+    } catch (parseErr: any) {
+      if (parseErr.response) throw parseErr; // already enhanced
+    }
+  }
+  throw err;
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const sessionReportService = {
@@ -92,14 +113,19 @@ export const sessionReportService = {
     params.set('topic', workbook.topic ?? '');
     params.set('date',  new Date(workbook.date).toISOString().split('T')[0]);
 
-    const response = await apiClient.get(`/admin/sessions/download?${params.toString()}`, { responseType: 'blob' });
+    let response;
+    try {
+      response = await apiClient.get(`/admin/sessions/download?${params.toString()}`, { responseType: 'blob' });
+    } catch (err) {
+      await throwBlobError(err);
+    }
 
-    const contentDisposition: string = response.headers['content-disposition'] ?? '';
+    const contentDisposition: string = response!.headers['content-disposition'] ?? '';
     let fileName = `${workbook.workbookName}.xlsx`;
     const match  = contentDisposition.match(/filename="([^"]+)"/);
     if (match?.[1]) fileName = match[1];
 
-    const url  = window.URL.createObjectURL(new Blob([response.data]));
+    const url  = window.URL.createObjectURL(new Blob([response!.data]));
     const link = document.createElement('a');
     link.href  = url;
     link.setAttribute('download', fileName);
@@ -139,9 +165,14 @@ export const sessionReportService = {
    * File name: ES-{Topic}({AcYear},{Date},{Room}).xlsx
    */
   downloadSingleSession: async (session: AttendanceSession): Promise<void> => {
-    const response = await apiClient.get(`/admin/sessions/${session.id}/download`, { responseType: 'blob' });
+    let response;
+    try {
+      response = await apiClient.get(`/admin/sessions/${session.id}/download`, { responseType: 'blob' });
+    } catch (err) {
+      await throwBlobError(err);
+    }
 
-    const contentDisposition: string = response.headers['content-disposition'] ?? '';
+    const contentDisposition: string = response!.headers['content-disposition'] ?? '';
     const pad = (n: number) => n.toString().padStart(2, '0');
     const d   = new Date(session.date);
     const dateStr = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
@@ -155,7 +186,7 @@ export const sessionReportService = {
     const match  = contentDisposition.match(/filename="([^"]+)"/);
     if (match?.[1]) fileName = match[1];
 
-    const url  = window.URL.createObjectURL(new Blob([response.data]));
+    const url  = window.URL.createObjectURL(new Blob([response!.data]));
     const link = document.createElement('a');
     link.href  = url;
     link.setAttribute('download', fileName);

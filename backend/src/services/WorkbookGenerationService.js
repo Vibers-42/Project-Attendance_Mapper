@@ -61,11 +61,10 @@ class WorkbookGenerationService {
     });
 
     for (const [roomName, roomSessions] of Object.entries(sessionsByRoom)) {
-      const roomSectionIds   = [...new Set(roomSessions.filter(s => s.sectionId).map(s => s.sectionId))];
-      const roomStudents     = allStudents.filter(s => roomSectionIds.includes(s.sectionId));
-      const targetStudents   = roomStudents.length > 0 ? roomStudents : allStudents;
       const roomRollNumbers  = new Set();
       roomSessions.forEach(s => s.records.forEach(r => roomRollNumbers.add(r.studentRollNumber)));
+      // Room sheets show only students who actually attended that room's session.
+      const targetStudents = allStudents.filter(s => roomRollNumbers.has(s.rollNumber));
 
       roomDataMap[roomName] = targetStudents.map((student, index) => ({
         'S.No':              index + 1,

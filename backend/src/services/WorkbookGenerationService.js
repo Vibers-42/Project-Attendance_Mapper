@@ -24,46 +24,44 @@ class WorkbookGenerationService {
     const allRecordRollNumbers = new Set();
     sessions.forEach(session => session.records.forEach(r => allRecordRollNumbers.add(r.studentRollNumber)));
 
-    // Fetch ALL students for this year using roll-number prefix matching so the
-    // overall sheet shows every student regardless of whether they attended,
-    // and works even when students were uploaded without an academicYearId link.
-    const effectiveYearId = academicYearId ||
-      sessions.find(s => s.academicYearId)?.academicYearId || null;
+    // Fetch ALL students for this year.
+    // Strategy: infer the year from the roll numbers of students who attended —
+    // this works even when sessions and students have no academicYearId linked.
+    const THIRD_YEAR_PREFIXES = ['24B1', '25B2', '25B3', '25B4', '25B5', '25B6', '25B7'];
+    const SECOND_YEAR_PREFIXES = ['25B1', '26B2', '26B3', '26B4', '26B5', '26B6', '26B7'];
+
+    let detectedPrefixes = null;
+    for (const roll of allRecordRollNumbers) {
+      const p4 = roll.substring(0, 4);
+      if (THIRD_YEAR_PREFIXES.includes(p4))  { detectedPrefixes = THIRD_YEAR_PREFIXES;  break; }
+      if (SECOND_YEAR_PREFIXES.includes(p4)) { detectedPrefixes = SECOND_YEAR_PREFIXES; break; }
+    }
 
     let studentWhere = {};
-    if (effectiveYearId) {
-      const academicYear = await prisma.academicYear.findUnique({
-        where: { id: effectiveYearId },
-        select: { name: true },
-      });
-      const yearName = (academicYear?.name || '').toLowerCase();
-
-      if (yearName.includes('3') || yearName.includes('third')) {
-        studentWhere.OR = [
-          { rollNumber: { startsWith: '24B1' } },
-          { rollNumber: { startsWith: '25B2' } },
-          { rollNumber: { startsWith: '25B3' } },
-          { rollNumber: { startsWith: '25B4' } },
-          { rollNumber: { startsWith: '25B5' } },
-          { rollNumber: { startsWith: '25B6' } },
-          { rollNumber: { startsWith: '25B7' } },
-        ];
-      } else if (yearName.includes('2') || yearName.includes('second')) {
-        studentWhere.OR = [
-          { rollNumber: { startsWith: '25B1' } },
-          { rollNumber: { startsWith: '26B2' } },
-          { rollNumber: { startsWith: '26B3' } },
-          { rollNumber: { startsWith: '26B4' } },
-          { rollNumber: { startsWith: '26B5' } },
-          { rollNumber: { startsWith: '26B6' } },
-          { rollNumber: { startsWith: '26B7' } },
-        ];
-      } else {
-        studentWhere.academicYearId = effectiveYearId;
-      }
+    if (detectedPrefixes) {
+      studentWhere.OR = detectedPrefixes.map(p => ({ rollNumber: { startsWith: p } }));
     } else {
-      const sectionIds = [...new Set(sessions.filter(s => s.sectionId).map(s => s.sectionId))];
-      if (sectionIds.length > 0) studentWhere.sectionId = { in: sectionIds };
+      // Could not infer from roll numbers — fall back to academicYearId name lookup
+      const effectiveYearId = academicYearId ||
+        sessions.find(s => s.academicYearId)?.academicYearId || null;
+
+      if (effectiveYearId) {
+        const academicYear = await prisma.academicYear.findUnique({
+          where: { id: effectiveYearId },
+          select: { name: true },
+        });
+        const yearName = (academicYear?.name || '').toLowerCase();
+        if (yearName.includes('3') || yearName.includes('third')) {
+          studentWhere.OR = THIRD_YEAR_PREFIXES.map(p => ({ rollNumber: { startsWith: p } }));
+        } else if (yearName.includes('2') || yearName.includes('second')) {
+          studentWhere.OR = SECOND_YEAR_PREFIXES.map(p => ({ rollNumber: { startsWith: p } }));
+        } else {
+          studentWhere.academicYearId = effectiveYearId;
+        }
+      } else {
+        const sectionIds = [...new Set(sessions.filter(s => s.sectionId).map(s => s.sectionId))];
+        if (sectionIds.length > 0) studentWhere.sectionId = { in: sectionIds };
+      }
     }
 
     const allStudents = await prisma.student.findMany({

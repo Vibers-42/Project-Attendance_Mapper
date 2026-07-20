@@ -7,7 +7,7 @@ class WorkbookGenerationService {
   // ── Shared data-building logic ───────────────────────────────────────────────
 
   async _buildWorkbookData(academicYearId, topic) {
-    const sessionWhere = { status: 'COMPLETED' };
+    const sessionWhere = { status: { in: ['CREATED', 'ACTIVE', 'COMPLETED'] } };
     if (academicYearId) sessionWhere.academicYearId = academicYearId;
     if (topic) sessionWhere.topic = topic;
 

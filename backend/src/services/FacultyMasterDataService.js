@@ -164,20 +164,22 @@ class FacultyMasterDataService {
       password: passwordHash,
     }));
 
-    const { count, newFaculty } = await FacultyRepository.upsertFaculty(facultyWithPasswords);
-    const skippedCount = parsedFaculty.length - count;
+    const { count, updatedCount, newFaculty } = await FacultyRepository.upsertFaculty(facultyWithPasswords);
+
+    const parts = [];
+    if (count > 0)        parts.push(`${count} new faculty added`);
+    if (updatedCount > 0) parts.push(`${updatedCount} existing faculty updated`);
+    if (parts.length === 0) parts.push('No changes — file matches existing data');
 
     return {
       insertedCount: count,
-      skippedCount,
+      updatedCount,
       newFaculty: newFaculty.map((f) => ({
         facultyId: f.facultyId,
         name:      f.name,
         password:  DEFAULT_PASSWORD,
       })),
-      message: count > 0
-        ? `${count} new faculty added. ${skippedCount} already existed and were skipped.`
-        : `All ${skippedCount} faculty already exist — no new accounts created.`,
+      message: parts.join('. ') + '.',
     };
   }
 }

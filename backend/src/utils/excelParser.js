@@ -251,7 +251,7 @@ const parseFacultyExcel = (fileBuffer) => {
       empIdSet.add(employeeId.toLowerCase());
 
       parsedFaculty.push({
-        facultyId: employeeId,
+        facultyId: employeeId.toUpperCase(),
         name: name,
         role: 'FACULTY',
         isActive: true,

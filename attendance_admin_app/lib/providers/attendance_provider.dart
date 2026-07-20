@@ -221,16 +221,15 @@ class AttendanceProvider with ChangeNotifier {
   // 3rd Year → 24B1 (2024 regular) or 25B[2-7] (2025 lateral entry)
   // No year set  → any 2nd/3rd year AI roll
   RegExp get _validRollPattern {
-    // Roll number format: {year}B{batch}1AI{section}{number}
-    // Section is a letter (A-Z) followed by 2-3 digits, e.g. C38, D02, A001
+    // Roll number suffix: optional section letter + 2-4 digits (e.g. C38, D02, 001, 0012)
     // Accept both "2nd Year"/"Second Year" and "3rd Year"/"Third Year" spellings.
     final y = _year?.toLowerCase() ?? '';
     if (y.contains('2') || y.contains('second')) {
-      return RegExp(r'^(25B1|26B[2-7])1AI[A-Z]\d{2,3}$');
+      return RegExp(r'^(25B1|26B[2-7])1AI[A-Z]?\d{2,4}$');
     } else if (y.contains('3') || y.contains('third')) {
-      return RegExp(r'^(24B1|25B[2-7])1AI[A-Z]\d{2,3}$');
+      return RegExp(r'^(24B1|25B[2-7])1AI[A-Z]?\d{2,4}$');
     }
-    return RegExp(r'^(24B1|25B[1-7]|26B[2-7])1AI[A-Z]\d{2,3}$');
+    return RegExp(r'^(24B1|25B[1-7]|26B[2-7])1AI[A-Z]?\d{2,4}$');
   }
 
   // Normalizes a raw scanned/typed input: strips spaces, hyphens, underscores, uppercases.
@@ -252,8 +251,8 @@ class AttendanceProvider with ChangeNotifier {
     }
     final rollNumber = _validStudents[normalized]!;
 
-    // Branch check — must be AI branch; suffix is section letter + 2-3 digits (e.g. C38, D02)
-    final branchPattern = RegExp(r'^(24|25|26)B[1-7]1AI[A-Z]\d{2,3}$');
+    // Branch check — must be AI branch; suffix is optional section letter + 2-4 digits
+    final branchPattern = RegExp(r'^(24|25|26)B[1-7]1AI[A-Z]?\d{2,4}$');
     if (!branchPattern.hasMatch(rollNumber)) {
       return 'Student not registered.';
     }

@@ -93,9 +93,10 @@ class FacultyRepository {
     return prisma.faculty.delete({ where: { id } });
   }
 
-  // ─── Additive upload via Excel (keeps existing records) ──────────────────
+  // ─── Upsert upload via Excel ──────────────────────────────────────────────
+  // New faculty → inserted with default password.
+  // Existing faculty → name updated (password/role preserved).
   async upsertFaculty(facultyData) {
-    // Find which Employee IDs already exist in one query
     const incomingIds = facultyData.map((f) => f.facultyId);
     const existing = await prisma.faculty.findMany({
       where: { facultyId: { in: incomingIds } },
@@ -103,12 +104,28 @@ class FacultyRepository {
     });
     const existingIds = new Set(existing.map((f) => f.facultyId));
 
-    // Only insert genuinely new faculty — existing accounts are left untouched
-    const newFaculty = facultyData.filter((f) => !existingIds.has(f.facultyId));
-    if (newFaculty.length === 0) return { count: 0, newFaculty: [] };
+    const newFaculty    = facultyData.filter((f) => !existingIds.has(f.facultyId));
+    const updateFaculty = facultyData.filter((f) =>  existingIds.has(f.facultyId));
 
-    await prisma.faculty.createMany({ data: newFaculty, skipDuplicates: true });
-    return { count: newFaculty.length, newFaculty };
+    let insertCount = 0;
+    if (newFaculty.length > 0) {
+      await prisma.faculty.createMany({ data: newFaculty, skipDuplicates: true });
+      insertCount = newFaculty.length;
+    }
+
+    // Update name only — preserve password, role, and isActive
+    if (updateFaculty.length > 0) {
+      await Promise.all(
+        updateFaculty.map((f) =>
+          prisma.faculty.update({
+            where: { facultyId: f.facultyId },
+            data:  { name: f.name },
+          })
+        )
+      );
+    }
+
+    return { count: insertCount, updatedCount: updateFaculty.length, newFaculty };
   }
 }
 

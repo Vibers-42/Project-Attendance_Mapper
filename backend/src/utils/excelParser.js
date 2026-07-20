@@ -222,15 +222,27 @@ const parseFacultyExcel = (fileBuffer) => {
     rawData.forEach((row, index) => {
       const excelRowNum = headerRowIdx + index + 2;
 
-      const getVal = (possibleKeys) => {
-        const key = Object.keys(row).find(k => 
+      const getVal = (possibleKeys, { fuzzy = false } = {}) => {
+        const keys = Object.keys(row);
+        // 1. Exact match (case-insensitive)
+        let key = keys.find(k =>
           possibleKeys.some(pk => k.toLowerCase().trim() === pk.toLowerCase())
         );
+        // 2. Fuzzy: column name contains any alias keyword
+        if (!key && fuzzy) {
+          key = keys.find(k =>
+            possibleKeys.some(pk => k.toLowerCase().trim().includes(pk.toLowerCase()))
+          );
+        }
         return key ? String(row[key]).trim() : '';
       };
 
-      const employeeId = getVal([...empIdAliases]);
-      const name = getVal(['faculty name', 'faculty.name', 'name', 'faculty', 'full name', 'fullname']);
+      const employeeId = getVal([...empIdAliases], { fuzzy: true });
+      const name = getVal(
+        ['faculty name', 'faculty.name', 'name of the staff', 'staff name',
+         'name', 'faculty', 'full name', 'fullname', 'lecturer', 'instructor'],
+        { fuzzy: true },
+      );
 
       // Skip completely empty rows silently
       if (!employeeId && !name) return;

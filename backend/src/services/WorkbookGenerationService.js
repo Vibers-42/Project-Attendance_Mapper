@@ -20,15 +20,50 @@ class WorkbookGenerationService {
       throw new NotFoundError('No completed attendance sessions found for the specified filters.');
     }
 
-    const sectionIds = [...new Set(sessions.filter(s => s.sectionId).map(s => s.sectionId))];
+    // Build attended-roll set first — used for P/A marking later.
+    const allRecordRollNumbers = new Set();
+    sessions.forEach(session => session.records.forEach(r => allRecordRollNumbers.add(r.studentRollNumber)));
 
-    // Always prefer academicYearId so the overall sheet includes every student in that year,
-    // not just the ones whose section happened to be linked to a session.
-    const studentWhere = {};
-    if (academicYearId) {
-      studentWhere.academicYearId = academicYearId;
-    } else if (sectionIds.length > 0) {
-      studentWhere.sectionId = { in: sectionIds };
+    // Fetch ALL students for this year using roll-number prefix matching so the
+    // overall sheet shows every student regardless of whether they attended,
+    // and works even when students were uploaded without an academicYearId link.
+    const effectiveYearId = academicYearId ||
+      sessions.find(s => s.academicYearId)?.academicYearId || null;
+
+    let studentWhere = {};
+    if (effectiveYearId) {
+      const academicYear = await prisma.academicYear.findUnique({
+        where: { id: effectiveYearId },
+        select: { name: true },
+      });
+      const yearName = (academicYear?.name || '').toLowerCase();
+
+      if (yearName.includes('3') || yearName.includes('third')) {
+        studentWhere.OR = [
+          { rollNumber: { startsWith: '24B1' } },
+          { rollNumber: { startsWith: '25B2' } },
+          { rollNumber: { startsWith: '25B3' } },
+          { rollNumber: { startsWith: '25B4' } },
+          { rollNumber: { startsWith: '25B5' } },
+          { rollNumber: { startsWith: '25B6' } },
+          { rollNumber: { startsWith: '25B7' } },
+        ];
+      } else if (yearName.includes('2') || yearName.includes('second')) {
+        studentWhere.OR = [
+          { rollNumber: { startsWith: '25B1' } },
+          { rollNumber: { startsWith: '26B2' } },
+          { rollNumber: { startsWith: '26B3' } },
+          { rollNumber: { startsWith: '26B4' } },
+          { rollNumber: { startsWith: '26B5' } },
+          { rollNumber: { startsWith: '26B6' } },
+          { rollNumber: { startsWith: '26B7' } },
+        ];
+      } else {
+        studentWhere.academicYearId = effectiveYearId;
+      }
+    } else {
+      const sectionIds = [...new Set(sessions.filter(s => s.sectionId).map(s => s.sectionId))];
+      if (sectionIds.length > 0) studentWhere.sectionId = { in: sectionIds };
     }
 
     const allStudents = await prisma.student.findMany({
@@ -39,9 +74,6 @@ class WorkbookGenerationService {
     if (allStudents.length === 0) {
       throw new NotFoundError('No students found for the filtered sessions.');
     }
-
-    const allRecordRollNumbers = new Set();
-    sessions.forEach(session => session.records.forEach(r => allRecordRollNumbers.add(r.studentRollNumber)));
 
     const overallData = allStudents.map((student, index) => ({
       'S.No':              index + 1,

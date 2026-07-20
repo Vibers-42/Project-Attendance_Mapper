@@ -21,11 +21,14 @@ class WorkbookGenerationService {
     }
 
     const sectionIds = [...new Set(sessions.filter(s => s.sectionId).map(s => s.sectionId))];
+
+    // Always prefer academicYearId so the overall sheet includes every student in that year,
+    // not just the ones whose section happened to be linked to a session.
     const studentWhere = {};
-    if (sectionIds.length > 0) {
-      studentWhere.sectionId = { in: sectionIds };
-    } else if (academicYearId) {
+    if (academicYearId) {
       studentWhere.academicYearId = academicYearId;
+    } else if (sectionIds.length > 0) {
+      studentWhere.sectionId = { in: sectionIds };
     }
 
     const allStudents = await prisma.student.findMany({

@@ -162,9 +162,18 @@ const parseFacultyExcel = (fileBuffer) => {
       'employee id', 'employee.id', 'emp id', 'emp.id', 'empid',
       'id', 'faculty id', 'faculty.id', 'fac id', 'fac.id',
       'employee no', 'employee.no', 'emp no', 'emp.no',
+      'staff id', 'staff.id', 'staffid', 'staff no', 'staff number',
+      'emp_id', 'employee_id', 'faculty_id', 'fac_id', 'staff_id',
+      'code', 'faculty code', 'emp code', 'employee code',
     ]);
 
+    // Keywords used for fuzzy matching (a cell that CONTAINS any of these is a candidate)
+    const empIdKeywords = ['emp', 'employee', 'faculty', 'staff', 'id', 'code', 'no'];
+    const nameKeywords = ['name', 'faculty', 'lecturer', 'instructor', 'professor'];
+
     let headerRowIdx = -1;
+
+    // Pass 1: exact match
     for (let i = 0; i < Math.min(allRows.length, 20); i++) {
       const cells = allRows[i].map((c) => String(c).toLowerCase().trim());
       if (cells.some((c) => empIdAliases.has(c))) {
@@ -173,11 +182,24 @@ const parseFacultyExcel = (fileBuffer) => {
       }
     }
 
+    // Pass 2: fuzzy/contains match — find a row that has both an ID-like and a name-like column
     if (headerRowIdx === -1) {
-      throw new BadRequestError(
-        'Could not find a header row containing "Employee ID" (or similar). ' +
-        'Ensure your Excel file has a row with columns like "Employee ID", "Faculty Name", etc.'
-      );
+      for (let i = 0; i < Math.min(allRows.length, 20); i++) {
+        const cells = allRows[i].map((c) => String(c).toLowerCase().trim());
+        const hasIdCol = cells.some((c) => empIdKeywords.some((kw) => c.includes(kw)));
+        const hasNameCol = cells.some((c) => nameKeywords.some((kw) => c.includes(kw)));
+        if (hasIdCol && hasNameCol) {
+          headerRowIdx = i;
+          console.log(`[ExcelParser] Faculty header found via fuzzy match at row ${i + 1}:`, allRows[i]);
+          break;
+        }
+      }
+    }
+
+    // Pass 3: positional fallback — treat the first non-empty row as the header
+    if (headerRowIdx === -1) {
+      headerRowIdx = 0;
+      console.warn('[ExcelParser] Could not detect faculty header row; falling back to row 1 as header.');
     }
 
     const rawData = xlsx.utils.sheet_to_json(sheet, {

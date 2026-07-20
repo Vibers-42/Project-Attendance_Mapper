@@ -5,6 +5,17 @@ const { ConflictError, NotFoundError } = require('../utils/AppError');
 const prisma = require('../config/prisma');
 
 class StudentMasterDataService {
+  // Returns all students as a flat map of { rollNumber, barcode } — used by mobile app for scan validation.
+  // No pagination cap: fetches everything in one shot.
+  async getScanMap() {
+    const prisma = require('../config/prisma');
+    const students = await prisma.student.findMany({
+      select: { rollNumber: true, barcode: true },
+      orderBy: { rollNumber: 'asc' },
+    });
+    return students;
+  }
+
   // Unified: handles both browse (no query) and search (with query), both paginated
   async getStudents(filters = {}, page = 1, limit = 50, query = '') {
     const skip = (page - 1) * limit;

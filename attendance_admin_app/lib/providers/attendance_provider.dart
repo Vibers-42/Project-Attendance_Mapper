@@ -208,7 +208,7 @@ class AttendanceProvider with ChangeNotifier {
   }
 
   bool hasScanned(String rollNumber) {
-    String normalized = rollNumber.trim().toUpperCase();
+    String normalized = _normalizeInput(rollNumber);
     if (_validStudents.isNotEmpty && _validStudents.containsKey(normalized)) {
       normalized = _validStudents[normalized]!;
     }
@@ -221,19 +221,25 @@ class AttendanceProvider with ChangeNotifier {
   // 3rd Year → 24B1 (2024 regular) or 25B[2-7] (2025 lateral entry)
   // No year set  → any 2nd/3rd year AI roll
   RegExp get _validRollPattern {
-    switch (_year) {
-      case '2nd Year':
-        return RegExp(r'^(25B1|26B[2-7])1AI\d{3}$');
-      case '3rd Year':
-        return RegExp(r'^(24B1|25B[2-7])1AI\d{3}$');
-      default:
-        return RegExp(r'^(24B1|25B[1-7]|26B[2-7])1AI\d{3}$');
+    // Accept both "2nd Year"/"Second Year" and "3rd Year"/"Third Year" spellings.
+    final y = _year?.toLowerCase() ?? '';
+    if (y.contains('2') || y.contains('second')) {
+      return RegExp(r'^(25B1|26B[2-7])1AI\d{3,4}$');
+    } else if (y.contains('3') || y.contains('third')) {
+      return RegExp(r'^(24B1|25B[2-7])1AI\d{3,4}$');
     }
+    return RegExp(r'^(24B1|25B[1-7]|26B[2-7])1AI\d{3,4}$');
   }
+
+  // Normalizes a raw scanned/typed input: strips spaces, hyphens, underscores, uppercases.
+  String _normalizeInput(String raw) =>
+      raw.trim().toUpperCase().replaceAll(RegExp(r'[\s\-_]'), '');
 
   /// Returns null on success, or an error message on failure
   String? addStudent(String rawInput) {
-    String normalized = rawInput.trim().toUpperCase();
+    final normalized = _normalizeInput(rawInput);
+
+    if (normalized.isEmpty) return 'Invalid input.';
 
     // Client-side validation against Master Data (always required)
     if (_validStudents.isEmpty) {
@@ -242,30 +248,30 @@ class AttendanceProvider with ChangeNotifier {
     if (!_validStudents.containsKey(normalized)) {
       return 'Student not registered.';
     }
-    normalized = _validStudents[normalized]!;
+    final rollNumber = _validStudents[normalized]!;
 
-    // Branch check first — must be AI branch
-    final branchPattern = RegExp(r'^(24|25|26)B[1-7]1AI\d{3}$');
-    if (!branchPattern.hasMatch(normalized)) {
+    // Branch check — must be AI branch (flexible digit count for roll suffix)
+    final branchPattern = RegExp(r'^(24|25|26)B[1-7]1AI\d{3,4}$');
+    if (!branchPattern.hasMatch(rollNumber)) {
       return 'Student not registered.';
     }
 
     // Year-locked check — gives a specific message on year mismatch
-    if (!_validRollPattern.hasMatch(normalized)) {
+    if (!_validRollPattern.hasMatch(rollNumber)) {
       return 'Student is not in $_year.';
     }
 
-    if (_scannedStudents.contains(normalized)) {
+    if (_scannedStudents.contains(rollNumber)) {
       return 'Attendance Already Recorded.';
     }
 
     bool success = _localRepository.saveAttendanceLocally(
-      rollNumber: normalized,
+      rollNumber: rollNumber,
       currentList: _scannedStudents,
     );
-    
+
     if (success) {
-      _lastScanned = normalized;
+      _lastScanned = rollNumber;
       notifyListeners();
       return null;
     }

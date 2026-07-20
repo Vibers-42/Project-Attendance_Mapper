@@ -79,23 +79,19 @@ class SessionRepository {
 
   Future<Map<String, String>> getValidStudents() async {
     try {
-      final response = await _apiService.client.get(
-        ApiConstants.students,
-        queryParameters: {'limit': 500},
-      );
-
+      final response = await _apiService.client.get(ApiConstants.studentScanMap);
       final authResponse = AuthResponseModel.fromJson(response.data);
       if (authResponse.success && authResponse.data != null) {
         final studentsList = authResponse.data as List<dynamic>;
         final Map<String, String> validMap = {};
-        
+
         for (var student in studentsList) {
-          final rollNumber = student['rollNumber']?.toString().toUpperCase();
-          final barcode = student['barcode']?.toString().toUpperCase();
-          
+          final rollNumber = _normalize(student['rollNumber']?.toString());
+          final barcode = _normalize(student['barcode']?.toString());
+
           if (rollNumber != null) {
             validMap[rollNumber] = rollNumber;
-            if (barcode != null) {
+            if (barcode != null && barcode != rollNumber) {
               validMap[barcode] = rollNumber;
             }
           }
@@ -104,9 +100,14 @@ class SessionRepository {
       }
       return {};
     } catch (e) {
-      // If offline or fails, return empty map so we don't block session creation,
-      // but ideally we should cache this for offline use.
       return {};
     }
+  }
+
+  // Strips whitespace/hyphens/underscores and uppercases — matches normalization in the app.
+  String? _normalize(String? raw) {
+    if (raw == null) return null;
+    final v = raw.trim().toUpperCase().replaceAll(RegExp(r'[\s\-_]'), '');
+    return v.isEmpty ? null : v;
   }
 }

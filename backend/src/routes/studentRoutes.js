@@ -9,6 +9,7 @@ router.use(authenticate);
 
 // Define routes
 router.get('/', StudentController.getStudents);
+router.get('/scan-map', StudentController.getScanMap);
 router.get('/search', StudentController.searchStudents);
 router.get('/departments', StudentController.getDepartments);
 router.get('/:rollNumber', StudentController.getStudent);

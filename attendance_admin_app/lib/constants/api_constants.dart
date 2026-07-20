@@ -12,4 +12,5 @@ class ApiConstants {
 
   // Master Data Endpoints
   static const String students = '/students';
+  static const String studentScanMap = '/students/scan-map';
 }

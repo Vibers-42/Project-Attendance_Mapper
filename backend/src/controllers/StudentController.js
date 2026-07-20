@@ -47,6 +47,11 @@ class StudentController {
     });
   }
 
+  async getScanMap(req, res) {
+    const students = await StudentMasterDataService.getScanMap();
+    return sendSuccess(res, { message: 'Scan map retrieved', data: students });
+  }
+
   async getDepartments(req, res) {
     const departments = await StudentMasterDataService.getDepartments();
     return sendSuccess(res, {

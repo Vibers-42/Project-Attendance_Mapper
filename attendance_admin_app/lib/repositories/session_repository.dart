@@ -3,6 +3,7 @@ import '../constants/api_constants.dart';
 import '../models/attendance_session_model.dart';
 import '../models/auth_response_model.dart';
 import '../services/api_service.dart';
+import 'package:flutter/foundation.dart';
 import '../utils/api_exception.dart';
 
 class SessionRepository {
@@ -82,6 +83,10 @@ class SessionRepository {
       final response = await _apiService.client.get(ApiConstants.studentScanMap);
       final authResponse = AuthResponseModel.fromJson(response.data);
       if (authResponse.success && authResponse.data != null) {
+        if (authResponse.data is! List) {
+          debugPrint('[SessionRepository] getValidStudents: unexpected format: ${authResponse.data.runtimeType}');
+          return {};
+        }
         final studentsList = authResponse.data as List<dynamic>;
         final Map<String, String> validMap = {};
 

@@ -131,7 +131,7 @@ class _EditSessionSheet extends StatefulWidget {
 }
 
 class _EditSessionSheetState extends State<_EditSessionSheet> {
-  static const List<String> _years = ['Second Year', 'Third Year'];
+  static const List<String> _years = ['2nd Year', '3rd Year'];
   static const List<String> _subjects = [
     'Employability Skills - Aptitude',
     'Employability Skills - Soft Skills',
@@ -195,9 +195,10 @@ class _EditSessionSheetState extends State<_EditSessionSheet> {
     );
 
     if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
     Navigator.of(context).pop();
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    messenger.showSnackBar(SnackBar(
       content: Text(success
           ? 'Session updated${yearChanged ? ' — previous scans cleared' : ''}'
           : provider.errorMessage ?? 'Update failed'),
@@ -429,6 +430,7 @@ class _ScannerTabState extends State<ScannerTab>
   }
 
   void _showSnackbar(String message, {required bool isError}) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -556,7 +558,8 @@ class _ScannerTabState extends State<ScannerTab>
                                       Provider.of<AttendanceProvider>(
                                           context,
                                           listen: false);
-                                  final removed = provider.lastScanned!;
+                                  final removed = provider.lastScanned;
+                                  if (removed == null) return;
                                   provider.removeStudent(removed);
                                   _showSnackbar('Removed: $removed',
                                       isError: false);

@@ -44,8 +44,16 @@ class AuthRepository {
       final authResponse = AuthResponseModel.fromJson(response.data);
 
       if (authResponse.success && authResponse.data != null) {
-        final token = authResponse.data!['token'] as String;
-        final facultyJson = authResponse.data!['faculty'] as Map<String, dynamic>;
+        final rawToken = authResponse.data!['token'];
+        if (rawToken == null || rawToken is! String) {
+          throw ApiException('Login failed: invalid server response.');
+        }
+        final token = rawToken;
+        final rawFaculty = authResponse.data!['faculty'];
+        if (rawFaculty is! Map<String, dynamic>) {
+          throw ApiException('Login failed: invalid user data from server.');
+        }
+        final facultyJson = rawFaculty;
 
         await _storageService.saveToken(token);
         await _storageService.saveUser(jsonEncode(facultyJson));
@@ -68,8 +76,12 @@ class AuthRepository {
       final authResponse = AuthResponseModel.fromJson(response.data);
 
       if (authResponse.success && authResponse.data != null) {
-        final facultyJson = authResponse.data!['faculty'] as Map<String, dynamic>;
-        
+        final rawFaculty = authResponse.data!['faculty'];
+        if (rawFaculty is! Map<String, dynamic>) {
+          throw ApiException('Session refresh failed: invalid server response.');
+        }
+        final facultyJson = rawFaculty;
+
         await _storageService.saveUser(jsonEncode(facultyJson));
         return FacultyModel.fromJson(facultyJson);
       } else {

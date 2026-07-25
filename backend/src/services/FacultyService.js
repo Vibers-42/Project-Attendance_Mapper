@@ -27,9 +27,10 @@ class FacultyService {
     await facultyRepository.update(faculty.id, { lastLoginAt: new Date() });
 
     const payload = {
-      id: faculty.id,
+      id:        faculty.id,
       facultyId: faculty.facultyId,
-      role: faculty.role,
+      role:      faculty.role,
+      source:    'faculty',
     };
 
     const token = generateToken(payload);

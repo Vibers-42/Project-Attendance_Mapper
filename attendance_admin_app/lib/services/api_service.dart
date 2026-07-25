@@ -68,8 +68,10 @@ class _AuthInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     final isLoginRequest = err.requestOptions.path.contains('/auth/login');
-    if (err.response?.statusCode == 401 && !isLoginRequest) {
-      // Token is missing, expired, or revoked — clear credentials and force re-login.
+    final status = err.response?.statusCode;
+    // 401 = token missing/expired/revoked; 403 = account deactivated/role changed.
+    // Both require clearing credentials and forcing re-login.
+    if ((status == 401 || status == 403) && !isLoginRequest) {
       await _storageService?.clearAll();
       await _onUnauthorized?.call();
     }

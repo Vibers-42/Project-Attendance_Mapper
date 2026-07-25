@@ -105,7 +105,7 @@ class _FacultyAccountScreenState extends State<FacultyAccountScreen> {
               Navigator.of(ctx).pop();
               await Provider.of<AuthProvider>(context, listen: false).logout();
               if (!mounted) return;
-              Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+              Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
             },
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Log Out'),
@@ -144,7 +144,7 @@ class _FacultyAccountScreenState extends State<FacultyAccountScreen> {
                     radius: 50,
                     backgroundColor: theme.colorScheme.primary,
                     child: Text(
-                      faculty.name.substring(0, 1).toUpperCase(),
+                      faculty.name.isNotEmpty ? faculty.name[0].toUpperCase() : '?',
                       style: TextStyle(fontSize: 40, color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -326,8 +326,8 @@ class _ServerUrlSectionState extends State<_ServerUrlSection> {
     final url = _ctrl.text.trim();
     if (url.isEmpty) return;
     await Provider.of<ApiConfigService>(context, listen: false).setBaseUrl(url);
-    setState(() => _editing = false);
     if (!mounted) return;
+    setState(() => _editing = false);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Server URL updated'),

@@ -49,7 +49,7 @@ class AttendanceQueryRepository {
       final authResponse = AuthResponseModel.fromJson(response.data);
 
       if (authResponse.success && authResponse.data != null) {
-        final List<dynamic> sessionsList = authResponse.data!['sessions'];
+        final List<dynamic> sessionsList = (authResponse.data!['sessions'] as List?) ?? [];
         final Map<String, dynamic> meta = authResponse.data!['meta'] ?? {};
 
         final sessions = sessionsList
@@ -77,7 +77,7 @@ class AttendanceQueryRepository {
       final authResponse = AuthResponseModel.fromJson(response.data);
 
       if (authResponse.success && authResponse.data != null) {
-        final List<dynamic> recordsList = authResponse.data!['records'];
+        final List<dynamic> recordsList = (authResponse.data!['records'] as List?) ?? [];
         return recordsList
             .map((json) => AttendanceRecordModel.fromJson(json as Map<String, dynamic>))
             .toList();

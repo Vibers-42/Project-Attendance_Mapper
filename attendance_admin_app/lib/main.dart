@@ -35,6 +35,8 @@ import 'screens/recovery_wrapper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/api_config_service.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   // Capture UI Errors
   FlutterError.onError = (details) {
@@ -73,7 +75,10 @@ void main() async {
 
   // Create AuthProvider before runApp so we can wire the 401 auto-logout callback.
   final authProvider = AuthProvider(authRepository);
-  apiService.setOnUnauthorized(authProvider.logout);
+  apiService.setOnUnauthorized(() async {
+    await authProvider.logout();
+    navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
+  });
 
   runApp(
     MultiProvider(
@@ -100,6 +105,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Attendance Admin',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),

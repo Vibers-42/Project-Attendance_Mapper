@@ -22,8 +22,12 @@ class _SessionDetailsScreenState extends State<SessionDetailsScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_initialized) {
-      _session =
-          ModalRoute.of(context)!.settings.arguments as AttendanceSessionModel;
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is! AttendanceSessionModel) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => Navigator.of(context).pop());
+        return;
+      }
+      _session = args;
       _recordsFuture =
           Provider.of<AttendanceHistoryProvider>(context, listen: false)
               .fetchRecordsForSession(_session.id);
@@ -53,6 +57,9 @@ class _SessionDetailsScreenState extends State<SessionDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_initialized) {
+      return const Scaffold(body: SizedBox.shrink());
+    }
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
@@ -112,7 +119,7 @@ class _SessionDetailsScreenState extends State<SessionDetailsScreen> {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  if (snapshot.hasError || (snapshot.data != null && snapshot.data!.isEmpty && Provider.of<AttendanceHistoryProvider>(context, listen: false).recordsErrorMessage != null)) {
+                  if (snapshot.hasError || Provider.of<AttendanceHistoryProvider>(context, listen: false).recordsErrorMessage != null) {
                     final msg = Provider.of<AttendanceHistoryProvider>(context, listen: false).recordsErrorMessage ?? 'Error loading records';
                     return Center(
                       child: Padding(

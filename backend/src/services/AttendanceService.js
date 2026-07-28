@@ -152,19 +152,18 @@ class AttendanceService {
     return sessionRepository.update(sessionId, { status: 'CANCELLED' });
   }
 
-  async submitAttendance(sessionId, facultyId, studentRollNumbers) {
+  async submitAttendance(sessionId, facultyId, studentRollNumbers, confirmed = false) {
     const uniqueRollNumbers = [...new Set(studentRollNumbers)];
-    if (uniqueRollNumbers.length === 0) return { count: 0 };
+    if (uniqueRollNumbers.length === 0) return { count: 0, skipped: [] };
 
     const prisma = require('../config/prisma');
     const { Prisma } = require('@prisma/client');
     const { ValidationError, DuplicateScanError } = require('../utils/AppError');
 
     try {
-      // Use SERIALIZABLE isolation so that two concurrent faculty members submitting
-      // the same student at the same moment cannot both pass the conflict check.
-      // PostgreSQL will detect the anomaly and abort one transaction with P2034,
-      // which we catch below and convert into a user-friendly DuplicateScanError.
+      // SERIALIZABLE isolation ensures two concurrent faculty submits cannot
+      // both pass the conflict check simultaneously. PostgreSQL aborts the
+      // second with P2034, which we convert to a DuplicateScanError below.
       const result = await prisma.$transaction(async (tx) => {
         // ── 1. Verify session ownership and status ─────────────────────────
         const current = await tx.attendanceSession.findUnique({
@@ -183,11 +182,8 @@ class AttendanceService {
         }
 
         // ── 2. Cross-session conflict check ────────────────────────────────
-        // Find any record where:
-        //   a) the studentRollNumber is one we are about to insert, AND
-        //   b) it belongs to a DIFFERENT session that is still CREATED or ACTIVE.
-        // We join AttendanceSession and Faculty in a single raw-ish Prisma query
-        // using nested includes so we can surface the faculty name to the caller.
+        // Find any record where the studentRollNumber is in our batch AND it
+        // belongs to a DIFFERENT session that is still CREATED or ACTIVE.
         const conflictingRecords = await tx.attendanceRecord.findMany({
           where: {
             studentRollNumber: { in: uniqueRollNumbers },
@@ -208,36 +204,62 @@ class AttendanceService {
           },
         });
 
+        // ── 3. Handle conflicts based on the confirmed flag ────────────────
         if (conflictingRecords.length > 0) {
-          // Build a structured conflicts list for the frontend.
-          const conflicts = conflictingRecords.map((rec) => ({
-            rollNumber:  rec.studentRollNumber,
-            facultyName: rec.session.faculty.name,
-            sessionId:   rec.sessionId,
-            timestamp:   rec.timestamp.toISOString(),
-          }));
+          if (!confirmed) {
+            // ── Phase 1: reject and surface conflict details ───────────────
+            const conflicts = conflictingRecords.map((rec) => ({
+              rollNumber:  rec.studentRollNumber,
+              facultyName: rec.session.faculty.name,
+              sessionId:   rec.sessionId,
+              timestamp:   rec.timestamp.toISOString(),
+            }));
 
-          // Create a deduplicated list of roll numbers for the error message.
-          const conflictRolls = [...new Set(conflicts.map((c) => c.rollNumber))];
-          throw new DuplicateScanError(
-            `${conflictRolls.length === 1
-              ? `Roll number ${conflictRolls[0]} is`
-              : `Roll numbers ${conflictRolls.join(', ')} are`
-            } already present in another active session.`,
-            conflicts
+            const conflictRolls = [...new Set(conflicts.map((c) => c.rollNumber))];
+            throw new DuplicateScanError(
+              `${conflictRolls.length === 1
+                ? `Roll number ${conflictRolls[0]} is`
+                : `Roll numbers ${conflictRolls.join(', ')} are`
+              } already present in another active session.`,
+              conflicts
+            );
+          }
+
+          // ── Phase 2: filter conflicts out, insert the rest ────────────────
+          // Re-check is always live (inside the same SERIALIZABLE transaction),
+          // so the result is accurate even if the situation changed between
+          // the faculty seeing the Phase 1 dialog and pressing Continue.
+          const conflictingRollSet = new Set(
+            conflictingRecords.map((r) => r.studentRollNumber)
           );
+          const toInsert = uniqueRollNumbers.filter((r) => !conflictingRollSet.has(r));
+          const skipped  = [...conflictingRollSet];
+
+          if (toInsert.length === 0) {
+            // Every submitted student was a conflict — nothing to insert.
+            return { count: 0, skipped };
+          }
+
+          const insertResult = await tx.attendanceRecord.createMany({
+            data: toInsert.map((r) => ({ sessionId, studentRollNumber: r })),
+            skipDuplicates: true,
+          });
+
+          return { count: insertResult.count, skipped };
         }
 
-        // ── 3. Insert attendance records ───────────────────────────────────
-        return tx.attendanceRecord.createMany({
+        // ── 4. No conflicts — insert all ───────────────────────────────────
+        const insertResult = await tx.attendanceRecord.createMany({
           data: uniqueRollNumbers.map((r) => ({ sessionId, studentRollNumber: r })),
           skipDuplicates: true,
         });
+
+        return { count: insertResult.count, skipped: [] };
       }, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       });
 
-      return { count: result.count };
+      return result; // { count, skipped }
     } catch (error) {
       // Re-throw our custom errors untouched (they carry the right HTTP status).
       if (error.isOperational) throw error;
@@ -249,9 +271,8 @@ class AttendanceService {
         );
       }
 
-      // P2034 — PostgreSQL detected a serialization anomaly (two concurrent submits
-      // raced to insert the same student). Surface this as a duplicate-scan conflict
-      // so the faculty sees a meaningful message instead of a generic 500.
+      // P2034 — PostgreSQL serialization anomaly from a true simultaneous race.
+      // Surface as a duplicate-scan conflict so the faculty gets a clear 409.
       if (error.code === 'P2034') {
         throw new DuplicateScanError(
           'A concurrent submission conflict was detected. Please retry — one of your students may have just been scanned by another faculty member.'

@@ -307,6 +307,27 @@ class AttendanceProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Clears all in-memory and locally-persisted session state.
+  /// Called after a successful submission, a confirmed Phase 2 submit, or a discard.
+  void _clearSessionState() {
+    _localRepository.clearAttendance();
+    _sessionId = null;
+    _professorName = null;
+    _year = null;
+    _roomNumber = null;
+    _date = null;
+    _subject = null;
+    _sessionTime = null;
+    _labIncharge = null;
+    _scannedStudents.clear();
+    _lastScanned = null;
+    _validStudents.clear();
+  }
+
+  /// Phase 1 submit: sends the full scanned list to the backend.
+  /// If cross-session conflicts are found the backend returns HTTP 409 and
+  /// this method returns false, storing the typed [DuplicateScanException]
+  /// in [duplicateScanConflict] for the UI to show a confirmation dialog.
   Future<bool> submitAttendance() async {
     if (_sessionId == null || _scannedStudents.isEmpty) {
       _submitError = 'No active session or students to submit.';
@@ -319,23 +340,9 @@ class AttendanceProvider with ChangeNotifier {
 
     try {
       await _submissionRepository.submitAttendance(_sessionId!, _scannedStudents);
-      
+
       // Strict Offline Guarantee: Only clear Hive if the backend returns success.
-      _localRepository.clearAttendance();
-      
-      _sessionId = null;
-      _professorName = null;
-      _year = null;
-      _roomNumber = null;
-      _date = null;
-      _subject = null;
-      _sessionTime = null;
-      _labIncharge = null;
-      
-      _scannedStudents.clear();
-      _lastScanned = null;
-      _validStudents.clear();
-      
+      _clearSessionState();
       return true;
     } on DuplicateScanException catch (e) {
       // Preserve the typed exception so the UI can render per-student details.
@@ -351,21 +358,40 @@ class AttendanceProvider with ChangeNotifier {
     }
   }
 
+  /// Phase 2 submit: called after the faculty presses Continue on the conflict dialog.
+  /// Re-sends the original full list with [confirmed] = true so the backend
+  /// automatically filters out conflicting students and inserts only the rest.
+  Future<bool> confirmSubmitSkippingConflicts() async {
+    if (_sessionId == null || _scannedStudents.isEmpty) {
+      _submitError = 'No active session or students to submit.';
+      return false;
+    }
+
+    _setSubmitting(true);
+    _submitError = null;
+    _duplicateScanConflict = null;
+
+    try {
+      await _submissionRepository.submitAttendance(
+        _sessionId!,
+        _scannedStudents,
+        confirmed: true,
+      );
+
+      // Clear local state only on backend success.
+      _clearSessionState();
+      return true;
+    } catch (e) {
+      _submitError = e.toString().replaceAll('Exception: ', '');
+      return false;
+    } finally {
+      _setSubmitting(false);
+      notifyListeners();
+    }
+  }
+
   void discardSession() {
-    _localRepository.clearAttendance();
-    _sessionId = null;
-    _professorName = null;
-    _year = null;
-    _roomNumber = null;
-    _date = null;
-    _subject = null;
-    _sessionTime = null;
-    _labIncharge = null;
-    _validStudents.clear();
-    
-    _scannedStudents.clear();
-    _lastScanned = null;
-    
+    _clearSessionState();
     notifyListeners();
   }
 }

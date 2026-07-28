@@ -5,12 +5,38 @@ import '../services/api_service.dart';
 import '../utils/api_exception.dart';
 import '../utils/duplicate_scan_exception.dart';
 
+/// Result returned by [AttendanceSubmissionRepository.submitAttendance].
+class AttendanceSubmitResult {
+  /// Number of attendance records that were successfully inserted.
+  final int count;
+
+  /// Roll numbers skipped because they conflicted with another active session.
+  /// Non-empty only when the submission was [confirmed] (Phase 2).
+  final List<String> skipped;
+
+  const AttendanceSubmitResult({required this.count, this.skipped = const []});
+}
+
 class AttendanceSubmissionRepository {
   final ApiService _apiService;
 
   AttendanceSubmissionRepository(this._apiService);
 
-  Future<int> submitAttendance(String sessionId, List<String> scannedStudents) async {
+  /// Submits attendance records for [sessionId].
+  ///
+  /// **Phase 1** — [confirmed] = false (default):
+  ///   If cross-session conflicts exist, throws [DuplicateScanException].
+  ///   The UI should show the confirmation dialog.
+  ///
+  /// **Phase 2** — [confirmed] = true:
+  ///   The backend filters out conflicting students automatically and inserts
+  ///   only the rest. Returns [AttendanceSubmitResult.skipped] with the
+  ///   roll numbers that were removed.
+  Future<AttendanceSubmitResult> submitAttendance(
+    String sessionId,
+    List<String> scannedStudents, {
+    bool confirmed = false,
+  }) async {
     if (sessionId.isEmpty) {
       throw ApiException('Session ID is missing. Cannot submit attendance.');
     }
@@ -24,13 +50,19 @@ class AttendanceSubmissionRepository {
         ApiConstants.sessionRecords(sessionId),
         data: {
           'scannedStudents': scannedStudents,
+          if (confirmed) 'confirmed': true,
         },
       );
 
       final authResponse = AuthResponseModel.fromJson(response.data);
 
       if (authResponse.success && authResponse.data != null) {
-        return authResponse.data!['count'] as int? ?? scannedStudents.length;
+        final count = authResponse.data!['count'] as int? ?? scannedStudents.length;
+        final rawSkipped = authResponse.data!['skipped'];
+        final skipped = rawSkipped is List
+            ? rawSkipped.whereType<String>().toList()
+            : <String>[];
+        return AttendanceSubmitResult(count: count, skipped: skipped);
       } else {
         throw ApiException(authResponse.message);
       }
@@ -66,4 +98,3 @@ class AttendanceSubmissionRepository {
     }
   }
 }
-

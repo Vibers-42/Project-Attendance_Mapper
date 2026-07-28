@@ -71,16 +71,26 @@ class AttendanceSessionController {
   }
 
   async submitRecords(req, res) {
-    // Note: The sessionId comes from req.params.id (as defined in the route),
-    // and the student roll numbers come from req.body.scannedStudents.
-    // The Joi validator handles ensuring scannedStudents is a non-empty array.
-    const { scannedStudents } = req.body;
-    
-    const result = await attendanceService.submitAttendance(req.params.id, req.user.id, scannedStudents);
-    
+    // scannedStudents  — roll numbers submitted by the faculty.
+    // confirmed        — Phase 2 flag: skip conflicting students instead of rejecting.
+    const { scannedStudents, confirmed = false } = req.body;
+
+    const result = await attendanceService.submitAttendance(
+      req.params.id,
+      req.user.id,
+      scannedStudents,
+      confirmed,
+    );
+
+    // Build a human-readable summary that reflects both inserted and skipped counts.
+    let message = `${result.count} attendance record(s) submitted successfully.`;
+    if (result.skipped && result.skipped.length > 0) {
+      message += ` ${result.skipped.length} student(s) already present in another active session were skipped.`;
+    }
+
     return sendSuccess(res, {
       data: result,
-      message: `${result.count} attendance records submitted successfully.`,
+      message,
     }, 201);
   }
 }

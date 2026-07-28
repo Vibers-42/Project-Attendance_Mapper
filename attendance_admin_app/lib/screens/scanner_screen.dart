@@ -825,61 +825,90 @@ class _LiveAttendanceTabState extends State<LiveAttendanceTab> {
     );
     if (confirmed != true || !mounted) return;
 
+    // ── Phase 1 submit ────────────────────────────────────────────────────
     final success = await provider.submitAttendance();
-    
+
     if (!mounted) return;
-    
+
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 8),
-              Text('Attendance Updated Successfully!', style: TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
-        ),
-      );
-      // Pop back to workspace (root), clearing the session details stack
-      Navigator.of(context).popUntil((route) => route.isFirst);
-    } else {
-      // ── Cross-session duplicate scan: show rich conflict dialog ───────────
-      final conflict = provider.duplicateScanConflict;
-      if (conflict != null) {
-        await _showDuplicateScanDialog(context, conflict);
-      } else {
-        // Generic error (e.g. network issue, session closed)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              provider.submitError ?? 'Failed to update attendance.',
-              style: const TextStyle(fontWeight: FontWeight.bold)
-            ),
-            backgroundColor: Colors.red.shade700,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
+      _showSuccessAndPop();
+      return;
     }
+
+    // ── Conflict detected: show Cancel / Continue dialog ──────────────────
+    final conflict = provider.duplicateScanConflict;
+    if (conflict != null) {
+      final shouldContinue = await _showDuplicateScanDialog(context, conflict);
+
+      if (shouldContinue == true && mounted) {
+        // ── Phase 2 submit: backend filters conflicts, inserts the rest ──
+        final phase2Success = await provider.confirmSubmitSkippingConflicts();
+
+        if (!mounted) return;
+        if (phase2Success) {
+          _showSuccessAndPop();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                provider.submitError ?? 'Failed to submit attendance.',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              backgroundColor: Colors.red.shade700,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+      // Cancel → do nothing; session stays open, scanned list unchanged.
+      return;
+    }
+
+    // ── Generic error (network, session closed, etc.) ─────────────────────
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          provider.submitError ?? 'Failed to update attendance.',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
-  /// Shows a detailed dialog listing every student whose scan was rejected
-  /// because they are already present in another faculty's active session.
-  Future<void> _showDuplicateScanDialog(
+  void _showSuccessAndPop() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.white),
+            SizedBox(width: 8),
+            Text('Attendance Updated Successfully!',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 3),
+      ),
+    );
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
+  /// Shows the duplicate-scan confirmation dialog.
+  /// Returns true if the faculty pressed Continue, false/null if they pressed Cancel.
+  Future<bool?> _showDuplicateScanDialog(
     BuildContext context,
     DuplicateScanException conflict,
   ) {
-    return showDialog<void>(
+    return showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         icon: Icon(Icons.warning_amber_rounded,
             color: Colors.orange.shade700, size: 36),
         title: const Text(
-          'Duplicate Scan Detected',
+          'Students Already in Another Session',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         content: SingleChildScrollView(
@@ -888,19 +917,51 @@ class _LiveAttendanceTabState extends State<LiveAttendanceTab> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'The following student(s) are already marked present in another active session. '  
-                'Please resolve this before resubmitting.',
+                'The following students have already been marked present '
+                'in another active session.',
                 style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               ...conflict.conflicts.map((c) => _ConflictTile(conflict: c)),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline,
+                        size: 16, color: Colors.blue.shade700),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'These students will automatically be removed from '
+                        'your submission. Do you want to continue?',
+                        style: TextStyle(
+                            color: Colors.blue.shade800, fontSize: 12.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
         actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.orange.shade700,
+            ),
+            child: const Text('Continue'),
           ),
         ],
       ),

@@ -25,6 +25,10 @@ const submitAttendanceSchema = Joi.object({
   scannedStudents: Joi.array().items(
     Joi.string().required()
   ).min(1).required(),
+
+  // Phase 2 flag: when true the backend filters out cross-session conflicts
+  // instead of rejecting the entire batch. Defaults to false (Phase 1 behavior).
+  confirmed: Joi.boolean().optional().default(false),
 });
 
 module.exports = {

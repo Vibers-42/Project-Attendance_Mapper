@@ -4,6 +4,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:vibration/vibration.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../providers/attendance_provider.dart';
+import '../utils/duplicate_scan_exception.dart';
 
 class ScannerScreen extends StatelessWidget {
   const ScannerScreen({super.key});
@@ -667,6 +668,106 @@ class _SummaryRow extends StatelessWidget {
   }
 }
 
+/// A single row in the duplicate-scan conflict dialog.
+/// Shows the conflicting roll number, the faculty who already scanned the student,
+/// and (if available) the timestamp of the original scan.
+class _ConflictTile extends StatelessWidget {
+  final DuplicateScanConflict conflict;
+  const _ConflictTile({required this.conflict});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs    = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
+    // Format timestamp if available: "28 Jul 2026, 10:05 AM"
+    String? formattedTime;
+    if (conflict.timestamp != null) {
+      try {
+        final dt = DateTime.parse(conflict.timestamp!).toLocal();
+        formattedTime =
+            '${dt.day.toString().padLeft(2, '0')} '
+            '${_month(dt.month)} ${dt.year}, '
+            '${_twoDigit(dt.hour % 12 == 0 ? 12 : dt.hour % 12)}:'
+            '${_twoDigit(dt.minute)} '
+            '${dt.hour >= 12 ? 'PM' : 'AM'}';
+      } catch (_) {
+        formattedTime = null;
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        border: Border.all(color: Colors.orange.shade200),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.badge_outlined, size: 15, color: Colors.orange.shade700),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  conflict.rollNumber,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.person_outline, size: 14, color: cs.onSurface.withValues(alpha: 0.6)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Scanned by: ${conflict.facultyName}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.7),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          if (formattedTime != null) ...[
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Icon(Icons.access_time_outlined, size: 14, color: cs.onSurface.withValues(alpha: 0.5)),
+                const SizedBox(width: 6),
+                Text(
+                  formattedTime,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.55),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String _month(int m) => const [
+    '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ][m];
+
+  static String _twoDigit(int n) => n.toString().padLeft(2, '0');
+}
+
+
 // ==========================================
 // TAB 2: LIVE ATTENDANCE
 // ==========================================
@@ -745,17 +846,65 @@ class _LiveAttendanceTabState extends State<LiveAttendanceTab> {
       // Pop back to workspace (root), clearing the session details stack
       Navigator.of(context).popUntil((route) => route.isFirst);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            provider.submitError ?? 'Failed to update attendance.',
-            style: const TextStyle(fontWeight: FontWeight.bold)
+      // ── Cross-session duplicate scan: show rich conflict dialog ───────────
+      final conflict = provider.duplicateScanConflict;
+      if (conflict != null) {
+        await _showDuplicateScanDialog(context, conflict);
+      } else {
+        // Generic error (e.g. network issue, session closed)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              provider.submitError ?? 'Failed to update attendance.',
+              style: const TextStyle(fontWeight: FontWeight.bold)
+            ),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 4),
           ),
-          backgroundColor: Colors.red.shade700,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+        );
+      }
     }
+  }
+
+  /// Shows a detailed dialog listing every student whose scan was rejected
+  /// because they are already present in another faculty's active session.
+  Future<void> _showDuplicateScanDialog(
+    BuildContext context,
+    DuplicateScanException conflict,
+  ) {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(Icons.warning_amber_rounded,
+            color: Colors.orange.shade700, size: 36),
+        title: const Text(
+          'Duplicate Scan Detected',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'The following student(s) are already marked present in another active session. '  
+                'Please resolve this before resubmitting.',
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              ...conflict.conflicts.map((c) => _ConflictTile(conflict: c)),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

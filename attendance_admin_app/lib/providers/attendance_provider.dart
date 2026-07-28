@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../repositories/local_attendance_repository.dart';
 import '../repositories/session_repository.dart';
 import '../repositories/attendance_submission_repository.dart';
+import '../utils/duplicate_scan_exception.dart';
 
 class AttendanceProvider with ChangeNotifier {
   final LocalAttendanceRepository _localRepository;
@@ -293,9 +294,13 @@ class AttendanceProvider with ChangeNotifier {
 
   bool _isSubmitting = false;
   String? _submitError;
-  
+  // Preserved as a typed field so the UI can render the rich conflict dialog.
+  DuplicateScanException? _duplicateScanConflict;
+
   bool get isSubmitting => _isSubmitting;
   String? get submitError => _submitError;
+  /// Non-null when the last submit was rejected due to a cross-session conflict.
+  DuplicateScanException? get duplicateScanConflict => _duplicateScanConflict;
 
   void _setSubmitting(bool value) {
     _isSubmitting = value;
@@ -310,6 +315,7 @@ class AttendanceProvider with ChangeNotifier {
 
     _setSubmitting(true);
     _submitError = null;
+    _duplicateScanConflict = null;
 
     try {
       await _submissionRepository.submitAttendance(_sessionId!, _scannedStudents);
@@ -331,6 +337,11 @@ class AttendanceProvider with ChangeNotifier {
       _validStudents.clear();
       
       return true;
+    } on DuplicateScanException catch (e) {
+      // Preserve the typed exception so the UI can render per-student details.
+      _duplicateScanConflict = e;
+      _submitError = e.message;
+      return false;
     } catch (e) {
       _submitError = e.toString().replaceAll('Exception: ', '');
       return false;

@@ -43,6 +43,22 @@ class ConflictError extends AppError {
   }
 }
 
+/**
+ * Thrown when one or more students in a batch submission are already
+ * recorded as present in another currently-active attendance session.
+ *
+ * `conflicts` is an array of objects:
+ *   { rollNumber, facultyName, sessionId, timestamp }
+ * This structured payload lets the frontend display a per-student
+ * message such as "22A91A0501 already scanned by Dr. Ramesh".
+ */
+class DuplicateScanError extends AppError {
+  constructor(message = 'One or more students are already present in another active session.', conflicts = []) {
+    super(message, 409);
+    this.conflicts = conflicts;
+  }
+}
+
 class BadRequestError extends AppError {
   constructor(message = 'Bad request.') {
     super(message, 400);
@@ -57,4 +73,5 @@ module.exports = {
   NotFoundError,
   ConflictError,
   BadRequestError,
+  DuplicateScanError,
 };

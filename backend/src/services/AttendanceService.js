@@ -157,12 +157,16 @@ class AttendanceService {
     if (uniqueRollNumbers.length === 0) return { count: 0 };
 
     const prisma = require('../config/prisma');
-    const { ValidationError } = require('../utils/AppError');
+    const { Prisma } = require('@prisma/client');
+    const { ValidationError, DuplicateScanError } = require('../utils/AppError');
 
     try {
-      // Atomic: status check + record insert in one transaction — prevents
-      // a race condition where two concurrent submits both pass the status check.
+      // Use SERIALIZABLE isolation so that two concurrent faculty members submitting
+      // the same student at the same moment cannot both pass the conflict check.
+      // PostgreSQL will detect the anomaly and abort one transaction with P2034,
+      // which we catch below and convert into a user-friendly DuplicateScanError.
       const result = await prisma.$transaction(async (tx) => {
+        // ── 1. Verify session ownership and status ─────────────────────────
         const current = await tx.attendanceSession.findUnique({
           where: { id: sessionId },
           select: { status: true, facultyId: true },
@@ -178,19 +182,82 @@ class AttendanceService {
           );
         }
 
+        // ── 2. Cross-session conflict check ────────────────────────────────
+        // Find any record where:
+        //   a) the studentRollNumber is one we are about to insert, AND
+        //   b) it belongs to a DIFFERENT session that is still CREATED or ACTIVE.
+        // We join AttendanceSession and Faculty in a single raw-ish Prisma query
+        // using nested includes so we can surface the faculty name to the caller.
+        const conflictingRecords = await tx.attendanceRecord.findMany({
+          where: {
+            studentRollNumber: { in: uniqueRollNumbers },
+            sessionId:         { not: sessionId },
+            session: {
+              status: { in: ['CREATED', 'ACTIVE'] },
+            },
+          },
+          select: {
+            studentRollNumber: true,
+            timestamp:         true,
+            sessionId:         true,
+            session: {
+              select: {
+                faculty: { select: { name: true } },
+              },
+            },
+          },
+        });
+
+        if (conflictingRecords.length > 0) {
+          // Build a structured conflicts list for the frontend.
+          const conflicts = conflictingRecords.map((rec) => ({
+            rollNumber:  rec.studentRollNumber,
+            facultyName: rec.session.faculty.name,
+            sessionId:   rec.sessionId,
+            timestamp:   rec.timestamp.toISOString(),
+          }));
+
+          // Create a deduplicated list of roll numbers for the error message.
+          const conflictRolls = [...new Set(conflicts.map((c) => c.rollNumber))];
+          throw new DuplicateScanError(
+            `${conflictRolls.length === 1
+              ? `Roll number ${conflictRolls[0]} is`
+              : `Roll numbers ${conflictRolls.join(', ')} are`
+            } already present in another active session.`,
+            conflicts
+          );
+        }
+
+        // ── 3. Insert attendance records ───────────────────────────────────
         return tx.attendanceRecord.createMany({
           data: uniqueRollNumbers.map((r) => ({ sessionId, studentRollNumber: r })),
           skipDuplicates: true,
         });
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       });
 
       return { count: result.count };
     } catch (error) {
+      // Re-throw our custom errors untouched (they carry the right HTTP status).
+      if (error.isOperational) throw error;
+
+      // P2003 — foreign key violation: a scanned roll number is not in the Student table.
       if (error.code === 'P2003') {
         throw new ValidationError(
           'One or more scanned students do not exist in the master database.'
         );
       }
+
+      // P2034 — PostgreSQL detected a serialization anomaly (two concurrent submits
+      // raced to insert the same student). Surface this as a duplicate-scan conflict
+      // so the faculty sees a meaningful message instead of a generic 500.
+      if (error.code === 'P2034') {
+        throw new DuplicateScanError(
+          'A concurrent submission conflict was detected. Please retry — one of your students may have just been scanned by another faculty member.'
+        );
+      }
+
       throw error;
     }
   }

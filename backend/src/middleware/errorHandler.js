@@ -1,5 +1,5 @@
 const environment = require('../config/environment');
-const { AppError, ValidationError } = require('../utils/AppError');
+const { AppError, ValidationError, DuplicateScanError } = require('../utils/AppError');
 const { sendError } = require('../utils/apiResponse');
 
 /**
@@ -14,6 +14,16 @@ const errorHandler = (err, req, res, next) => {
     console.error('[Error]:', err);
   } else {
     console.error('[Error]:', err.message);
+  }
+
+  // Handle duplicate-scan across sessions (structured 409 with conflicts list)
+  if (err instanceof DuplicateScanError) {
+    return res.status(409).json({
+      success:   false,
+      message:   err.message,
+      errors:    [],
+      conflicts: err.conflicts,
+    });
   }
 
   // Handle our custom AppError hierarchy

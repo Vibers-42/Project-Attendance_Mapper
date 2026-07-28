@@ -39,6 +39,7 @@ export interface AttendanceSession {
   subject: { id: string; name: string } | null;
   section: { id: string; name: string } | null;
   _count: { records: number };
+  presentCount?: number;
   createdAt: string;
 }
 

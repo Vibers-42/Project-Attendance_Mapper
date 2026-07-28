@@ -38,6 +38,7 @@ const BASE_COLS = [
   { key: 'topic',    label: 'Topic',         width: 110,           align: 'left'   },
   { key: 'date',     label: 'Date',          width: 105,           align: 'left'   },
   { key: 'status',   label: 'Status',        width: 105,           align: 'center' },
+  { key: 'present',  label: 'Present',       width: 90,            align: 'center' },
   { key: 'actions',  label: 'Actions',       width: 130,           align: 'right'  },
 ] as const;
 
@@ -224,7 +225,9 @@ export function SessionTable() {
     queryKey: ['admin-raw-sessions', queryFilters],
     queryFn:  () => sessionReportService.listRawSessions(queryFilters),
     placeholderData: (prev) => prev,
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     retry: 2,
   });
 
@@ -463,6 +466,9 @@ export function SessionTable() {
                         <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400 truncate">{session.topic ?? deriveTopicFromSubject(session.subject?.name) ?? '—'}</td>
                         <td className="px-4 text-sm text-zinc-500">{dateStr}</td>
                         <td className="px-4 text-center"><StatusBadge status={session.status} /></td>
+                        <td className="px-4 text-center text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                          {session.presentCount ?? session._count?.records ?? 0}
+                        </td>
                         <td className="px-4 text-right">
                           <div className="flex justify-end gap-1">
                             <Button

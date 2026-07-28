@@ -627,6 +627,51 @@ class AdminSessionReportService {
     return { success: true, count };
   }
 
+  /**
+   * Derives presentCount for a session by parsing its attendance Excel file.
+   * Uses a per-request cache to ensure the same Excel file is not read multiple times during a single request.
+   * If missing, empty, or unparseable, returns 0 gracefully without throwing.
+   */
+  async _getPresentCountFromSessionExcel(sessionId, requestCache = new Map()) {
+    if (!sessionId) return 0;
+    if (requestCache.has(sessionId)) {
+      return requestCache.get(sessionId);
+    }
+
+    try {
+      const { buffer } = await this.downloadSingleSession(sessionId);
+      if (!buffer || buffer.length === 0) {
+        requestCache.set(sessionId, 0);
+        return 0;
+      }
+
+      const xlsx = require('xlsx');
+      const workbook = xlsx.read(buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames && workbook.SheetNames[0];
+      if (!sheetName) {
+        requestCache.set(sessionId, 0);
+        return 0;
+      }
+
+      const sheet = workbook.Sheets[sheetName];
+      const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+      if (!Array.isArray(rows) || rows.length === 0) {
+        requestCache.set(sessionId, 0);
+        return 0;
+      }
+
+      const presentCount = rows.filter(r =>
+        r && String(r['Attendance Status'] || '').trim().toUpperCase() === 'P'
+      ).length;
+
+      requestCache.set(sessionId, presentCount);
+      return presentCount;
+    } catch (err) {
+      requestCache.set(sessionId, 0);
+      return 0;
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // SESSION-LEVEL LISTING  (for the session-centric view tab)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -666,12 +711,20 @@ class AdminSessionReportService {
       _count:       { select: { records: true } },
     };
 
+    const attachPresentCount = (sessionsList) => {
+      return sessionsList.map((s) => {
+        const presentCount = s._count?.records ?? 0;
+        return { ...s, presentCount };
+      });
+    };
+
     if (!search) {
       const [sessions, total] = await prisma.$transaction([
         prisma.attendanceSession.findMany({ where, skip, take: limit, orderBy: { date: 'desc' }, include }),
         prisma.attendanceSession.count({ where }),
       ]);
-      return { sessions, meta: { total, page: Math.max(1, page), limit, totalPages: Math.ceil(total / limit) || 1 } };
+      const sessionsWithPresentCount = attachPresentCount(sessions);
+      return { sessions: sessionsWithPresentCount, meta: { total, page: Math.max(1, page), limit, totalPages: Math.ceil(total / limit) || 1 } };
     }
 
     // In-memory search — match against canonical session name: ES-Topic(AcYear,Date,Room)
@@ -688,7 +741,8 @@ class AdminSessionReportService {
 
     const total     = filtered.length;
     const paginated = filtered.slice(skip, skip + limit);
-    return { sessions: paginated, meta: { total, page: Math.max(1, page), limit, totalPages: Math.ceil(total / limit) || 1 } };
+    const sessionsWithPresentCount = attachPresentCount(paginated);
+    return { sessions: sessionsWithPresentCount, meta: { total, page: Math.max(1, page), limit, totalPages: Math.ceil(total / limit) || 1 } };
   }
 }
 

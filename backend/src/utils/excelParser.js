@@ -291,21 +291,41 @@ const parseFacultyExcel = (fileBuffer) => {
 const parsePlacementExcel = (fileBuffer) => {
   try {
     const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
+
+    // Columns that look like serial/sequence numbers — never treat as roll numbers.
+    const serialPatterns = ['s.no', 'sno', 's no', 'sr.no', 'sr no', 'sl.no', 'sl no',
+      'si.no', 'si no', 'serial no', 'serial number', '#', 's/n'];
+    const isSerialCol = (h) => serialPatterns.includes(h.toLowerCase().trim());
+
+    // Roll-number keywords used for sheet detection and column scoring.
+    const rollHighKws = ['roll', 'reg', 'enroll', 'scholar', 'htno', 'ht no', 'h.t',
+      'hall ticket', 'hallticket', 'admission', 'regno', 'rno', 'student id'];
+
+    // Find the sheet that contains actual student data (has a roll-number header row).
+    // Falls back to the sheet with the most rows if none match.
+    let bestSheetName = workbook.SheetNames[0];
+    let bestRowCount = 0;
+    for (const name of workbook.SheetNames) {
+      const s = workbook.Sheets[name];
+      const rows = xlsx.utils.sheet_to_json(s, { header: 1, defval: '' });
+      // Check if any of the first 20 rows looks like a student-data header.
+      const hasRollHeader = rows.slice(0, 20).some((row) => {
+        const cells = row.map((c) => String(c).toLowerCase().trim());
+        return cells.some((c) => !isSerialCol(c) && rollHighKws.some((kw) => c.includes(kw)));
+      });
+      if (hasRollHeader && rows.length > bestRowCount) {
+        bestSheetName = name;
+        bestRowCount = rows.length;
+      }
+    }
+
+    console.log(`[PlacementParser] Using sheet: "${bestSheetName}" (of ${workbook.SheetNames.join(', ')})`);
+    const sheet = workbook.Sheets[bestSheetName];
 
     const allRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
     if (!allRows || allRows.length === 0) {
       throw new BadRequestError('The uploaded Excel file is empty.');
     }
-
-    // Columns that look like serial/sequence numbers — never treat as roll numbers.
-    const serialPatterns = ['s.no', 'sno', 's no', 'sr.no', 'sr no', 'sl.no', 'sl no',
-      'si.no', 'si no', 'serial no', 'serial number', '#', 's/n'];
-    const isSerialCol = (h) => {
-      const l = h.toLowerCase().trim();
-      return serialPatterns.includes(l);
-    };
 
     // Keywords that suggest a roll/ID column or a name column.
     const rollKeywords = ['roll', 'reg', 'enroll', 'scholar', 'htno', 'ht no', 'h.t',

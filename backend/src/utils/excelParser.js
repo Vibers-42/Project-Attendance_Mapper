@@ -299,47 +299,57 @@ const parsePlacementExcel = (fileBuffer) => {
       throw new BadRequestError('The uploaded Excel file is empty.');
     }
 
-    const rollAliases = [
-      'roll no', 'roll number', 'rollno', 'roll_no', 'rollnumber',
-      'roll.no', 'roll.number', 'reg no', 'reg number', 'id', 'student id',
-    ];
+    // Keywords that suggest a roll/ID column or a name column.
+    const rollKeywords = ['roll', 'reg', 'enroll', 'enrollment', 'scholar', 'student id',
+      'id', 'regno', 'rno', 'htno', 'hall ticket', 'hallticket', 'admission'];
+    const nameKeywords = ['name', 'student', 'candidate', 'full'];
 
-    // Find header row by scanning for a roll-number-like column (max 20 rows).
+    // Find the first row (within 20) that has at least one roll-like and one name-like header.
     let headerRowIdx = -1;
     for (let i = 0; i < Math.min(allRows.length, 20); i++) {
       const cells = allRows[i].map((c) => String(c).toLowerCase().trim());
-      if (cells.some((c) => rollAliases.includes(c))) {
+      const hasRoll = cells.some((c) => rollKeywords.some((kw) => c.includes(kw)));
+      const hasName = cells.some((c) => nameKeywords.some((kw) => c.includes(kw)));
+      if (hasRoll || hasName) {
         headerRowIdx = i;
         break;
       }
     }
 
+    // Positional fallback: treat the first non-empty row as the header.
     if (headerRowIdx === -1) {
-      throw new BadRequestError(
-        'Could not find a header row containing "Roll No" (or similar). ' +
-        'Ensure your Excel file has a column named "Roll No" and "Name".',
-      );
+      headerRowIdx = allRows.findIndex((r) => r.some((c) => String(c).trim() !== ''));
+    }
+    if (headerRowIdx === -1) {
+      throw new BadRequestError('The uploaded Excel file appears to be empty.');
     }
 
     const rawData = xlsx.utils.sheet_to_json(sheet, { defval: '', range: headerRowIdx });
     if (!rawData || rawData.length === 0) {
-      throw new BadRequestError('No data rows found in the Excel file.');
+      throw new BadRequestError('No data rows found beneath the header row.');
     }
 
-    const nameAliases = ['name', 'student name', 'student', 'full name', 'fullname', 'student_name'];
+    const headers = Object.keys(rawData[0]);
+    console.log(`[PlacementParser] Header row ${headerRowIdx + 1}:`, headers);
 
-    const getVal = (row, aliases) => {
-      const keys = Object.keys(row);
-      const key = keys.find((k) => aliases.includes(k.toLowerCase().trim()));
-      return key ? String(row[key]).trim() : '';
-    };
+    // Pick the best column for roll number and name using keyword scoring.
+    const scoreCol = (colName, keywords) =>
+      keywords.reduce((s, kw) => s + (colName.toLowerCase().includes(kw) ? 1 : 0), 0);
+
+    const rollCol = headers.reduce((best, h) =>
+      scoreCol(h, rollKeywords) > scoreCol(best, rollKeywords) ? h : best, headers[0]);
+    const nameCol = headers.reduce((best, h) =>
+      scoreCol(h, nameKeywords) > scoreCol(best, nameKeywords) ? h : best,
+      headers.find((h) => h !== rollCol) || headers[0]);
+
+    console.log(`[PlacementParser] Roll column: "${rollCol}", Name column: "${nameCol}"`);
 
     const students = [];
     const seen = new Set();
 
     rawData.forEach((row) => {
-      const rollNumber = getVal(row, rollAliases).toUpperCase();
-      const name = getVal(row, nameAliases);
+      const rollNumber = String(row[rollCol] ?? '').trim().toUpperCase();
+      const name = String(row[nameCol] ?? '').trim();
 
       if (!rollNumber && !name) return;
       if (!rollNumber || !name) return;
@@ -351,7 +361,7 @@ const parsePlacementExcel = (fileBuffer) => {
 
     if (students.length === 0) {
       throw new BadRequestError(
-        'No valid student records found. Ensure the file has "Roll No" and "Name" columns.',
+        'No valid student records found. Make sure the file has student roll numbers and names.',
       );
     }
 

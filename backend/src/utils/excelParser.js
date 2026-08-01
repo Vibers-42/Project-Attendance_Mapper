@@ -281,7 +281,89 @@ const parseFacultyExcel = (fileBuffer) => {
   }
 };
 
+/**
+ * Lightweight parser for placement eligibility Excel files.
+ * Requires "Roll No" (or aliases) and "Name" (or aliases) columns.
+ * Returns [{ rollNumber, name }] — duplicates are silently skipped.
+ * @param {Buffer} fileBuffer
+ * @returns {{ rollNumber: string, name: string }[]}
+ */
+const parsePlacementExcel = (fileBuffer) => {
+  try {
+    const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+
+    const allRows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    if (!allRows || allRows.length === 0) {
+      throw new BadRequestError('The uploaded Excel file is empty.');
+    }
+
+    const rollAliases = [
+      'roll no', 'roll number', 'rollno', 'roll_no', 'rollnumber',
+      'roll.no', 'roll.number', 'reg no', 'reg number', 'id', 'student id',
+    ];
+
+    // Find header row by scanning for a roll-number-like column (max 20 rows).
+    let headerRowIdx = -1;
+    for (let i = 0; i < Math.min(allRows.length, 20); i++) {
+      const cells = allRows[i].map((c) => String(c).toLowerCase().trim());
+      if (cells.some((c) => rollAliases.includes(c))) {
+        headerRowIdx = i;
+        break;
+      }
+    }
+
+    if (headerRowIdx === -1) {
+      throw new BadRequestError(
+        'Could not find a header row containing "Roll No" (or similar). ' +
+        'Ensure your Excel file has a column named "Roll No" and "Name".',
+      );
+    }
+
+    const rawData = xlsx.utils.sheet_to_json(sheet, { defval: '', range: headerRowIdx });
+    if (!rawData || rawData.length === 0) {
+      throw new BadRequestError('No data rows found in the Excel file.');
+    }
+
+    const nameAliases = ['name', 'student name', 'student', 'full name', 'fullname', 'student_name'];
+
+    const getVal = (row, aliases) => {
+      const keys = Object.keys(row);
+      const key = keys.find((k) => aliases.includes(k.toLowerCase().trim()));
+      return key ? String(row[key]).trim() : '';
+    };
+
+    const students = [];
+    const seen = new Set();
+
+    rawData.forEach((row) => {
+      const rollNumber = getVal(row, rollAliases).toUpperCase();
+      const name = getVal(row, nameAliases);
+
+      if (!rollNumber && !name) return;
+      if (!rollNumber || !name) return;
+      if (seen.has(rollNumber)) return;
+      seen.add(rollNumber);
+
+      students.push({ rollNumber, name });
+    });
+
+    if (students.length === 0) {
+      throw new BadRequestError(
+        'No valid student records found. Ensure the file has "Roll No" and "Name" columns.',
+      );
+    }
+
+    return students;
+  } catch (error) {
+    if (error instanceof BadRequestError) throw error;
+    throw new BadRequestError('Failed to parse Excel file. Please ensure it is a valid .xlsx or .xls format.');
+  }
+};
+
 module.exports = {
   parseStudentExcel,
   parseFacultyExcel,
+  parsePlacementExcel,
 };

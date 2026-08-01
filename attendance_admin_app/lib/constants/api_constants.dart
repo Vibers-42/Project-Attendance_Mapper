@@ -13,4 +13,13 @@ class ApiConstants {
   // Master Data Endpoints
   static const String students = '/students';
   static const String studentScanMap = '/students/scan-map';
+
+  static const String placementSessions = '/placement/sessions';
+  static const String placementParseExcel = '/placement/parse-excel';
+  static const String placementFaculty = '/placement/faculty';
+  static String placementSessionStudents(String id) => '/placement/sessions/$id/students';
+  static String placementSessionAttendance(String id) => '/placement/sessions/$id/attendance';
+  static String placementSessionFinalize(String id) => '/placement/sessions/$id/finalize';
+  static String placementSessionReport(String id) => '/placement/sessions/$id/report';
+  static String placementSessionReportExcel(String id) => '/placement/sessions/$id/report/excel';
 }

@@ -20,6 +20,10 @@ dependencies:
   shared_preferences: ^2.5.5
   connectivity_plus: ^6.1.4
   vibration: ^3.2.0
+  file_picker: ^8.1.7
+  qr_flutter: ^4.1.0
+  path_provider: ^2.1.5
+  open_file: ^3.5.10
 
 dev_dependencies:
   flutter_test:

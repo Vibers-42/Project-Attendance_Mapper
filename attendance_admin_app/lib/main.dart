@@ -31,6 +31,16 @@ import 'screens/view_attendance_screen.dart';
 import 'screens/session_details_screen.dart';
 import 'screens/faculty_account_screen.dart';
 import 'screens/recovery_wrapper.dart';
+import 'screens/placement_home_screen.dart';
+import 'screens/placement_create_session_screen.dart';
+import 'screens/placement_sessions_screen.dart';
+import 'screens/placement_session_detail_screen.dart';
+
+import 'repositories/placement_repository.dart';
+import 'repositories/local_placement_repository.dart';
+import 'providers/placement_provider.dart';
+import 'screens/placement_scanner_screen.dart';
+import 'screens/placement_report_screen.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/api_config_service.dart';
@@ -56,9 +66,10 @@ void main() async {
   await Hive.initFlutter();
   final results = await Future.wait([
     Hive.openBox('attendanceBox'),
+    Hive.openBox('placementBox'),
     SharedPreferences.getInstance(),
   ]);
-  final prefs = results[1] as SharedPreferences;
+  final prefs = results[2] as SharedPreferences;
   final configService = ApiConfigService(prefs);
   await configService.init();
 
@@ -70,6 +81,7 @@ void main() async {
   final submissionRepository = AttendanceSubmissionRepository(apiService);
   final queryRepository = AttendanceQueryRepository(apiService);
   final localRepository = LocalAttendanceRepository();
+  final localPlacementRepository = LocalPlacementRepository();
 
   final recoveryService = SessionRecoveryService(localRepository);
 
@@ -93,6 +105,7 @@ void main() async {
           submissionRepository,
         )),
         ChangeNotifierProvider(create: (_) => AttendanceHistoryProvider(queryRepository)),
+        ChangeNotifierProvider(create: (_) => PlacementProvider(PlacementRepository(apiService), localPlacementRepository)),
       ],
       child: const MyApp(),
     ),
@@ -134,6 +147,12 @@ class MyApp extends StatelessWidget {
         '/view_attendance': (context) => const ViewAttendanceScreen(),
         '/session_details': (context) => const SessionDetailsScreen(),
         '/faculty_account': (context) => const FacultyAccountScreen(),
+        '/placement': (context) => const PlacementHomeScreen(),
+        '/placement_create_session': (context) => const PlacementCreateSessionScreen(),
+        '/placement_sessions': (context) => const PlacementSessionsScreen(),
+        '/placement_session_detail': (context) => const PlacementSessionDetailScreen(),
+        '/placement_scanner': (context) => const PlacementScannerScreen(),
+        '/placement_report': (context) => const PlacementReportScreen(),
       },
     );
   }

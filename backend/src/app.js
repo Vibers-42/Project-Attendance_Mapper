@@ -6,6 +6,7 @@ const compression = require('compression');
 require('express-async-errors'); // Catches unhandled promise rejections
 
 const routes = require('./routes');
+const publicAttendanceRoutes = require('./routes/publicAttendanceRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const notFound = require('./middleware/notFound');
 const environment = require('./config/environment');
@@ -28,6 +29,9 @@ if (environment.nodeEnv === 'development') {
 
 // API Routes
 app.use('/api/v1', routes);
+
+// Public placement attendance page (no auth — students scan QR and submit here)
+app.use('/attend', publicAttendanceRoutes);
 
 // 404 Handler
 app.use(notFound);

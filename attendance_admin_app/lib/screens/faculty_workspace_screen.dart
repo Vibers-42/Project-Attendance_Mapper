@@ -7,6 +7,7 @@ import '../providers/auth_provider.dart';
 import '../providers/attendance_provider.dart';
 import '../providers/attendance_history_provider.dart';
 import '../utils/app_route_observer.dart';
+import '../widgets/action_card.dart';
 
 class FacultyWorkspaceScreen extends StatefulWidget {
   const FacultyWorkspaceScreen({super.key});
@@ -225,36 +226,41 @@ class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen>
   }
 
   Widget _buildQuickActionsGrid(BuildContext context, ColorScheme cs) {
-    return Row(
+    return GridView.count(
+      crossAxisCount: 2,
+      crossAxisSpacing: 14,
+      mainAxisSpacing: 14,
+      childAspectRatio: 1.5,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       children: [
-        Expanded(
-          child: _ActionCard(
-            icon: Icons.add_circle_outline,
-            title: 'New Session',
-            bgColor: cs.primaryContainer.withValues(alpha: 0.6),
-            iconColor: cs.primary,
-            onTap: () => _handleNewSession(context),
-          ),
+        ActionCard(
+          icon: Icons.add_circle_outline,
+          title: 'New Session',
+          bgColor: cs.primaryContainer.withValues(alpha: 0.6),
+          iconColor: cs.primary,
+          onTap: () => _handleNewSession(context),
         ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: _ActionCard(
-            icon: Icons.history_outlined,
-            title: 'History',
-            bgColor: cs.secondaryContainer.withValues(alpha: 0.6),
-            iconColor: cs.secondary,
-            onTap: () => Navigator.pushNamed(context, '/view_attendance'),
-          ),
+        ActionCard(
+          icon: Icons.history_outlined,
+          title: 'History',
+          bgColor: cs.secondaryContainer.withValues(alpha: 0.6),
+          iconColor: cs.secondary,
+          onTap: () => Navigator.pushNamed(context, '/view_attendance'),
         ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: _ActionCard(
-            icon: Icons.person_outline,
-            title: 'Account',
-            bgColor: cs.tertiaryContainer.withValues(alpha: 0.6),
-            iconColor: cs.tertiary,
-            onTap: () => Navigator.pushNamed(context, '/faculty_account'),
-          ),
+        ActionCard(
+          icon: Icons.person_outline,
+          title: 'Account',
+          bgColor: cs.tertiaryContainer.withValues(alpha: 0.6),
+          iconColor: cs.tertiary,
+          onTap: () => Navigator.pushNamed(context, '/faculty_account'),
+        ),
+        ActionCard(
+          icon: Icons.work_outline,
+          title: 'Placements',
+          bgColor: cs.primaryContainer.withValues(alpha: 0.6),
+          iconColor: cs.primary,
+          onTap: () => Navigator.pushNamed(context, '/placement'),
         ),
       ],
     );
@@ -365,54 +371,6 @@ class _ActiveSessionCard extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _ActionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final Color bgColor;
-  final Color iconColor;
-  final VoidCallback onTap;
-
-  const _ActionCard({
-    required this.icon,
-    required this.title,
-    required this.bgColor,
-    required this.iconColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: bgColor,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 22.0),
-          child: Column(
-            children: [
-              Icon(icon, color: iconColor, size: 30),
-              const SizedBox(height: 10),
-              Text(
-                title,
-                style: TextStyle(
-                  color: iconColor,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

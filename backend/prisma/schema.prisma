@@ -29,10 +29,12 @@ model Faculty {
   isActive          Boolean             @default(true)
   lastLoginAt       DateTime?
   passwordChangedAt DateTime?
-  sessions          AttendanceSession[]
-  timetableEntries  TimetableEntry[]
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  sessions                 AttendanceSession[]
+  timetableEntries         TimetableEntry[]
+  placementSessionsCreated PlacementSession[]
+  placementPermissions     PlacementSessionPermission[]
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 }
 
 model AcademicYear {
@@ -234,9 +236,101 @@ model GeneratedWorkbook {
   academicYearId String?
   topic          String?
   filePath       String
-  generatedBy    String?   
+  generatedBy    String?
   createdAt      DateTime  @default(now())
 
   @@index([academicYearId])
   @@index([createdAt])
+}
+
+// ─── Placement Module ─────────────────────────────────────────────────────────
+
+enum PlacementSessionStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum PlacementAttendanceStatus {
+  PENDING
+  PRESENT
+  ABSENT
+}
+
+enum PlacementPermissionRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+/// Represents a single placement drive or recruitment session.
+model PlacementSession {
+  id          String                 @id @default(uuid())
+  title       String                 // Company name or drive title
+  date        DateTime               // Scheduled date of the drive
+  venue       String?                // Physical or virtual location
+  description String?                // Optional notes about the drive
+
+  status PlacementSessionStatus @default(DRAFT)
+
+  // Faculty who created the session; automatically granted OWNER permission.
+  createdById String
+  createdBy   Faculty @relation(fields: [createdById], references: [id])
+
+  students    PlacementStudent[]
+  permissions PlacementSessionPermission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdById])
+  @@index([status])
+  @@index([date])
+  @@index([status, date]) // list active sessions sorted by date
+}
+
+/// An eligible student uploaded for a specific placement session.
+/// Stored independently of the master Student table — placement
+/// rosters are sourced from Excel and may include students not yet
+/// present in the main database.
+model PlacementStudent {
+  id         String @id @default(uuid())
+  rollNumber String
+  name       String
+
+  sessionId String
+  session   PlacementSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  attendanceStatus PlacementAttendanceStatus @default(PENDING)
+
+  phoneNumber String?   // collected during virtual attendance
+  markedAt    DateTime? // timestamp when attendance was marked (virtual or offline)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sessionId, rollNumber])       // one entry per student per session
+  @@index([sessionId])                    // fetch all students in a session
+  @@index([sessionId, attendanceStatus])  // filter by attendance status within a session
+}
+
+/// Controls which faculty members can access a placement session and at what level.
+/// The creator of a PlacementSession is automatically assigned OWNER.
+model PlacementSessionPermission {
+  id String @id @default(uuid())
+
+  sessionId String
+  session   PlacementSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  facultyId String
+  faculty   Faculty @relation(fields: [facultyId], references: [id])
+
+  role PlacementPermissionRole @default(VIEWER)
+
+  grantedAt DateTime @default(now())
+
+  @@unique([sessionId, facultyId])  // one permission entry per faculty per session
+  @@index([sessionId])              // fetch all permissions for a session
+  @@index([facultyId])              // fetch all sessions accessible to a faculty member
 }

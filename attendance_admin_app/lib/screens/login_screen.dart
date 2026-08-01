@@ -14,6 +14,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _facultyIdController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _retrying = false;
 
   @override
   void dispose() {
@@ -22,26 +23,40 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleLogin() async {
+  Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
     final facultyId = _facultyIdController.text.trim();
     final password = _passwordController.text;
     final authProvider = context.read<AuthProvider>();
-    final success = await authProvider.login(facultyId, password);
 
-    if (!mounted) return;
+    while (mounted) {
+      final success = await authProvider.login(facultyId, password);
 
-    if (!success) {
+      if (!mounted) return;
+
+      if (success) {
+        Navigator.of(context).pushReplacementNamed('/recovery');
+        return;
+      }
+
+      if (authProvider.isConnectionError) {
+        // Server unreachable — wait and retry silently
+        setState(() => _retrying = true);
+        await Future.delayed(const Duration(seconds: 4));
+        if (!mounted) return;
+        setState(() => _retrying = false);
+        continue;
+      }
+
+      // Auth or server error — show message and stop
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(authProvider.errorMessage ?? 'Login failed'),
           backgroundColor: Colors.red.shade700,
         ),
       );
-    }
-    if (success && mounted) {
-      Navigator.of(context).pushReplacementNamed('/recovery');
+      return;
     }
   }
 
@@ -79,6 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final authProvider = Provider.of<AuthProvider>(context);
+    final busy = authProvider.isLoading || _retrying;
 
     return Scaffold(
       body: SafeArea(
@@ -127,7 +143,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _facultyIdController,
                     decoration: _dec('Faculty ID', Icons.badge_outlined),
                     textInputAction: TextInputAction.next,
-                    enabled: !authProvider.isLoading,
+                    enabled: !busy,
                     validator: (v) =>
                         (v == null || v.trim().isEmpty) ? 'Faculty ID is required' : null,
                   ),
@@ -151,22 +167,21 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     obscureText: _obscurePassword,
                     textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) =>
-                        authProvider.isLoading ? null : _handleLogin(),
-                    enabled: !authProvider.isLoading,
+                    onFieldSubmitted: (_) => busy ? null : _handleLogin(),
+                    enabled: !busy,
                     validator: (v) =>
                         (v == null || v.isEmpty) ? 'Password is required' : null,
                   ),
                   const SizedBox(height: 28),
 
                   FilledButton(
-                    onPressed: authProvider.isLoading ? null : _handleLogin,
+                    onPressed: busy ? null : _handleLogin,
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: authProvider.isLoading
+                    child: busy
                         ? const SizedBox(
                             height: 20,
                             width: 20,
@@ -177,6 +192,18 @@ class _LoginScreenState extends State<LoginScreen> {
                             style: TextStyle(
                                 fontSize: 16, fontWeight: FontWeight.w600)),
                   ),
+
+                  if (_retrying) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Connecting to server…',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: colorScheme.onSurface.withValues(alpha: 0.45),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

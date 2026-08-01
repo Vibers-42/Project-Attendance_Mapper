@@ -11,6 +11,7 @@ class AuthProvider extends ChangeNotifier {
   bool _isCheckingAuth = true;
   bool _isLoading = false;
   String? _errorMessage;
+  bool _isConnectionError = false;
 
   AuthProvider(this._authRepository) {
     checkAuthStatus();
@@ -21,6 +22,7 @@ class AuthProvider extends ChangeNotifier {
   bool get isCheckingAuth => _isCheckingAuth;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+  bool get isConnectionError => _isConnectionError;
 
   /// Checks if a valid session exists on app startup.
   /// PERFORMANCE FIX: First checks for a saved token in secure storage.
@@ -76,11 +78,13 @@ class AuthProvider extends ChangeNotifier {
     try {
       AppLogger.info('[AuthProvider] Login attempt for facultyId: $facultyId');
       _currentUser = await _authRepository.login(facultyId, password);
+      _isConnectionError = false;
       AppLogger.info('[AuthProvider] Login successful for: $facultyId');
       notifyListeners();
       return true;
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');
+      _isConnectionError = e is ApiException && (e.statusCode == 0 || e.statusCode == 408);
       AppLogger.warning('[AuthProvider] Login failed: $_errorMessage');
       notifyListeners();
       return false;

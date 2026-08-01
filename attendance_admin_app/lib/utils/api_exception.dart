@@ -11,7 +11,7 @@ class ApiException implements Exception {
     if (e.type == DioExceptionType.connectionTimeout || 
         e.type == DioExceptionType.receiveTimeout || 
         e.type == DioExceptionType.sendTimeout) {
-      return ApiException('Connection timed out. Please try again.', statusCode: 408);
+      return ApiException('Server is starting up — please wait a moment and try again.', statusCode: 408);
     }
     
     if (e.type == DioExceptionType.connectionError) {

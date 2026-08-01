@@ -274,14 +274,15 @@ class _SessionCard extends StatelessWidget {
 
   String _relativeDate(DateTime date) {
     final local = date.toLocal();
-    final today = DateTime.now();
-    final diff = DateTime(today.year, today.month, today.day)
-        .difference(DateTime(local.year, local.month, local.day))
-        .inDays;
+    final now = DateTime.now();
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+    final sessionMidnight = DateTime(local.year, local.month, local.day);
+    final diff = todayMidnight.difference(sessionMidnight).inDays;
     final time = DateFormat('h:mm a').format(local);
     if (diff == 0) return 'Today  ·  $time';
     if (diff == 1) return 'Yesterday  ·  $time';
-    if (diff < 7) return '$diff days ago  ·  $time';
+    if (diff == -1) return 'Tomorrow  ·  $time';
+    if (diff > 1 && diff < 7) return '$diff days ago  ·  $time';
     return '${DateFormat('dd MMM yyyy').format(local)}  ·  $time';
   }
 

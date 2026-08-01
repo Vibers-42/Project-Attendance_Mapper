@@ -251,7 +251,7 @@ class PlacementProvider with ChangeNotifier {
     try {
       final data = {
         'title': title,
-        'date': dateTime.toIso8601String(),
+        'date': dateTime.toUtc().toIso8601String(),
         'venue': venue,
         'attendanceMode': attendanceMode,
         'status': startImmediately ? 'ACTIVE' : 'DRAFT',

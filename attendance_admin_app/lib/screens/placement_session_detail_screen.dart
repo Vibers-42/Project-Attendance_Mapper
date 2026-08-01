@@ -129,6 +129,12 @@ class PlacementSessionDetailScreen extends StatelessWidget {
 
             // Action section
             _ActionSection(session: session, cs: cs, context: context),
+
+            // Delete — OWNER only
+            if (session.myRole == 'OWNER') ...[
+              const SizedBox(height: 24),
+              _DeleteSessionButton(session: session),
+            ],
           ],
         ),
       ),
@@ -463,6 +469,83 @@ class _Divider extends StatelessWidget {
       height: 1,
       thickness: 1,
       color: cs.outlineVariant.withValues(alpha: 0.5),
+    );
+  }
+}
+
+class _DeleteSessionButton extends StatelessWidget {
+  final PlacementSessionModel session;
+
+  const _DeleteSessionButton({required this.session});
+
+  Future<void> _onDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Session?'),
+        content: Text(
+          'This will permanently delete "${session.title}" and all its attendance records. '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade600),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final provider = Provider.of<PlacementProvider>(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    final ok = await provider.deleteSession(session.id);
+    if (!context.mounted) return;
+
+    if (ok) {
+      navigator.pop(); // back to sessions list
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          content: const Text('Failed to delete session. You may not have permission.'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<PlacementProvider>(
+      builder: (_, provider, __) => SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          icon: provider.isDeletingSession
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red),
+                )
+              : const Icon(Icons.delete_outline, color: Colors.red),
+          label: Text(
+            provider.isDeletingSession ? 'Deleting…' : 'Delete Session',
+            style: const TextStyle(color: Colors.red),
+          ),
+          onPressed: provider.isDeletingSession ? null : () => _onDelete(context),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            side: BorderSide(color: Colors.red.shade300),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      ),
     );
   }
 }

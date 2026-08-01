@@ -85,6 +85,10 @@ class PlacementService {
     return placementRepository.finalizeSession(sessionId, facultyId, rollNumbers);
   }
 
+  async deleteSession(sessionId, facultyId) {
+    return placementRepository.deleteSession(sessionId, facultyId);
+  }
+
   async submitVirtualAttendance(sessionId, rollNumber, phoneNumber) {
     return placementRepository.submitVirtualAttendance(sessionId, rollNumber, phoneNumber);
   }

@@ -91,6 +91,12 @@ class PlacementController {
     return res.send(buffer);
   }
 
+  async deleteSession(req, res) {
+    const { id } = req.params;
+    await placementService.deleteSession(id, req.user.id);
+    return sendSuccess(res, { message: 'Session deleted successfully.' });
+  }
+
   async finalizeSession(req, res) {
     const { id } = req.params;
     const { rollNumbers = [] } = req.body;

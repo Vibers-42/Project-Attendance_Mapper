@@ -63,6 +63,7 @@ class PlacementProvider with ChangeNotifier {
   String? _reportError;
   bool _isDownloadingExcel = false;
   String? _downloadError;
+  bool _isDeletingSession = false;
 
   // ── Virtual scanner state ─────────────────────────────────────────────────
 
@@ -129,6 +130,7 @@ class PlacementProvider with ChangeNotifier {
   String? get reportError => _reportError;
   bool get isDownloadingExcel => _isDownloadingExcel;
   String? get downloadError => _downloadError;
+  bool get isDeletingSession => _isDeletingSession;
 
   // ── Getters — virtual scanner ─────────────────────────────────────────────
 
@@ -424,6 +426,25 @@ class PlacementProvider with ChangeNotifier {
       return null;
     } finally {
       _isDownloadingExcel = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> deleteSession(String sessionId) async {
+    if (_isDeletingSession) return false;
+    _isDeletingSession = true;
+    notifyListeners();
+    try {
+      await _repository.deleteSession(sessionId);
+      _sessions = _sessions.where((s) => s.id != sessionId).toList();
+      return true;
+    } on ApiException catch (e) {
+      debugPrint('[PlacementProvider] deleteSession error: ${e.message}');
+      return false;
+    } catch (_) {
+      return false;
+    } finally {
+      _isDeletingSession = false;
       notifyListeners();
     }
   }

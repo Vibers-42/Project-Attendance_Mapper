@@ -16,6 +16,7 @@ class PlacementRepository {
           data: students.map((s) => ({
             rollNumber: s.rollNumber,
             name: s.name,
+            phoneNumber: s.phoneNumber ?? null,
             sessionId: session.id,
           })),
         });
@@ -199,6 +200,16 @@ class PlacementRepository {
 
       return { presentCount, absentCount: absentResult.count };
     });
+  }
+
+  async deleteSession(sessionId, facultyId) {
+    const permission = await prisma.placementSessionPermission.findFirst({
+      where: { sessionId, facultyId, role: 'OWNER' },
+    });
+    if (!permission) {
+      throw Object.assign(new Error('Only the session owner can delete this session.'), { statusCode: 403 });
+    }
+    await prisma.placementSession.delete({ where: { id: sessionId } });
   }
 
   async submitVirtualAttendance(sessionId, rollNumber, phoneNumber) {

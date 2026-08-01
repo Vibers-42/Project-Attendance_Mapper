@@ -223,7 +223,7 @@ class _SessionCard extends StatelessWidget {
               // Date + time
               _MetaRow(
                 icon: Icons.calendar_today_outlined,
-                label: '$dateStr  ·  $timeStr',
+                label: _relativeDate(session.date),
                 cs: cs,
               ),
 
@@ -270,6 +270,19 @@ class _SessionCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _relativeDate(DateTime date) {
+    final local = date.toLocal();
+    final today = DateTime.now();
+    final diff = DateTime(today.year, today.month, today.day)
+        .difference(DateTime(local.year, local.month, local.day))
+        .inDays;
+    final time = DateFormat('h:mm a').format(local);
+    if (diff == 0) return 'Today  ·  $time';
+    if (diff == 1) return 'Yesterday  ·  $time';
+    if (diff < 7) return '$diff days ago  ·  $time';
+    return '${DateFormat('dd MMM yyyy').format(local)}  ·  $time';
   }
 
   void _openDetail(BuildContext context) {
@@ -332,15 +345,39 @@ class _ActionButton extends StatelessWidget {
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
-class _StatusBadge extends StatelessWidget {
+class _StatusBadge extends StatefulWidget {
   final String status;
-
   const _StatusBadge({required this.status});
 
   @override
+  State<_StatusBadge> createState() => _StatusBadgeState();
+}
+
+class _StatusBadgeState extends State<_StatusBadge>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.status == 'ACTIVE') {
+      _pulse = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 900),
+      )..repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final (label, color) = switch (status) {
-      'ACTIVE' => ('● Live', Colors.blue.shade600),
+    final (label, color) = switch (widget.status) {
+      'ACTIVE' => ('Live', Colors.blue.shade600),
       'DRAFT' => ('Scheduled', Colors.orange.shade700),
       'COMPLETED' => ('Completed', Colors.green.shade700),
       _ => ('Cancelled', Colors.grey.shade500),
@@ -353,13 +390,32 @@ class _StatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.status == 'ACTIVE' && _pulse != null) ...[
+            AnimatedBuilder(
+              animation: _pulse!,
+              builder: (_, __) => Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color.withValues(alpha: 0.45 + 0.55 * _pulse!.value),
+                ),
+              ),
+            ),
+            const SizedBox(width: 5),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }

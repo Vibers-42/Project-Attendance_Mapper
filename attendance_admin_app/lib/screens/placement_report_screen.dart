@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:open_file/open_file.dart';
 import 'package:provider/provider.dart';
 
@@ -187,6 +188,13 @@ class _PlacementReportScreenState extends State<PlacementReportScreen> {
                 ),
               ),
 
+              // ── Present students (expandable) ───────────────────────────
+              if (report.presentStudents.isNotEmpty)
+                _PresentStudentsSection(
+                  students: report.presentStudents,
+                  cs: cs,
+                ),
+
               // ── Absent students header ──────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
@@ -267,6 +275,105 @@ class _PlacementReportScreenState extends State<PlacementReportScreen> {
 }
 
 // ── Widgets ───────────────────────────────────────────────────────────────────
+
+class _PresentStudentsSection extends StatelessWidget {
+  final List<PlacementReportStudent> students;
+  final ColorScheme cs;
+
+  const _PresentStudentsSection({required this.students, required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        leading: Icon(Icons.check_circle_outline, color: Colors.green.shade600, size: 20),
+        title: Text(
+          'Present Students  (${students.length})',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+        childrenPadding: EdgeInsets.zero,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 280),
+            child: ListView.builder(
+              shrinkWrap: true,
+              physics: const ClampingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              itemCount: students.length,
+              itemBuilder: (context, i) {
+                final s = students[i];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: Colors.green.withValues(alpha: 0.12),
+                        child: Text(
+                          s.name.isNotEmpty ? s.name[0].toUpperCase() : '?',
+                          style: TextStyle(
+                              color: Colors.green.shade700,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(s.rollNumber,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.4)),
+                            Text(s.name,
+                                style: TextStyle(
+                                    color: cs.onSurface.withValues(alpha: 0.65),
+                                    fontSize: 12)),
+                            if (s.phoneNumber != null)
+                              GestureDetector(
+                                onTap: () {
+                                  Clipboard.setData(ClipboardData(text: s.phoneNumber!));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Phone number copied'),
+                                      duration: Duration(seconds: 1),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                },
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.phone_outlined,
+                                        size: 12, color: Colors.green.shade600),
+                                    const SizedBox(width: 3),
+                                    Text(s.phoneNumber!,
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.green.shade700,
+                                            fontWeight: FontWeight.w500)),
+                                    const SizedBox(width: 3),
+                                    Icon(Icons.copy_outlined,
+                                        size: 10,
+                                        color: cs.onSurface.withValues(alpha: 0.3)),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _CountChip extends StatelessWidget {
   final String label;
@@ -352,27 +459,44 @@ class _AbsentStudentCard extends StatelessWidget {
                         color: cs.onSurface.withValues(alpha: 0.65),
                         fontSize: 13),
                   ),
+                  if (student.phoneNumber != null) ...[
+                    const SizedBox(height: 4),
+                    GestureDetector(
+                      onTap: () {
+                        Clipboard.setData(
+                            ClipboardData(text: student.phoneNumber!));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Phone number copied'),
+                            duration: Duration(seconds: 1),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      },
+                      child: Row(
+                        children: [
+                          Icon(Icons.phone_outlined,
+                              size: 13,
+                              color: cs.primary.withValues(alpha: 0.8)),
+                          const SizedBox(width: 4),
+                          Text(
+                            student.phoneNumber!,
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: cs.primary.withValues(alpha: 0.9)),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.copy_outlined,
+                              size: 11,
+                              color: cs.onSurface.withValues(alpha: 0.3)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-            if (student.phoneNumber != null) ...[
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Icon(Icons.phone_outlined,
-                      size: 14,
-                      color: cs.onSurface.withValues(alpha: 0.4)),
-                  const SizedBox(height: 2),
-                  Text(
-                    student.phoneNumber!,
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: cs.onSurface.withValues(alpha: 0.55)),
-                  ),
-                ],
-              ),
-            ],
           ],
         ),
       ),

@@ -299,16 +299,24 @@ const parsePlacementExcel = (fileBuffer) => {
       throw new BadRequestError('The uploaded Excel file is empty.');
     }
 
+    // Columns that look like serial/sequence numbers — never treat as roll numbers.
+    const serialPatterns = ['s.no', 'sno', 's no', 'sr.no', 'sr no', 'sl.no', 'sl no',
+      'si.no', 'si no', 'serial no', 'serial number', '#', 's/n'];
+    const isSerialCol = (h) => {
+      const l = h.toLowerCase().trim();
+      return serialPatterns.includes(l);
+    };
+
     // Keywords that suggest a roll/ID column or a name column.
-    const rollKeywords = ['roll', 'reg', 'enroll', 'enrollment', 'scholar', 'student id',
-      'id', 'regno', 'rno', 'htno', 'hall ticket', 'hallticket', 'admission'];
+    const rollKeywords = ['roll', 'reg', 'enroll', 'scholar', 'htno', 'ht no', 'h.t',
+      'hall ticket', 'hallticket', 'admission', 'regno', 'rno', 'student id', 'no', 'num', 'id'];
     const nameKeywords = ['name', 'student', 'candidate', 'full'];
 
     // Find the first row (within 20) that has at least one roll-like and one name-like header.
     let headerRowIdx = -1;
     for (let i = 0; i < Math.min(allRows.length, 20); i++) {
       const cells = allRows[i].map((c) => String(c).toLowerCase().trim());
-      const hasRoll = cells.some((c) => rollKeywords.some((kw) => c.includes(kw)));
+      const hasRoll = cells.some((c) => !isSerialCol(c) && rollKeywords.some((kw) => c.includes(kw)));
       const hasName = cells.some((c) => nameKeywords.some((kw) => c.includes(kw)));
       if (hasRoll || hasName) {
         headerRowIdx = i;
@@ -332,31 +340,69 @@ const parsePlacementExcel = (fileBuffer) => {
     const headers = Object.keys(rawData[0]);
     console.log(`[PlacementParser] Header row ${headerRowIdx + 1}:`, headers);
 
-    // Pick the best column for roll number and name using keyword scoring.
-    const scoreCol = (colName, keywords) =>
-      keywords.reduce((s, kw) => s + (colName.toLowerCase().includes(kw) ? 1 : 0), 0);
+    // Two-tier scoring: specific keywords score 2, broad keywords score 1.
+    // This ensures "Roll No" (2+1=3) beats "Phone No" (0+1=1).
+    const rollHigh = ['roll', 'reg', 'enroll', 'scholar', 'htno', 'ht no', 'h.t',
+      'hall ticket', 'hallticket', 'admission', 'regno', 'rno', 'student id'];
+    const rollLow  = ['no', 'num', 'id', 'number'];
+    const nameHigh = ['name', 'student', 'candidate'];
+    const nameLow  = ['full'];
+    const phoneKws = ['phone', 'mobile', 'contact', 'cell', 'whatsapp'];
 
-    const rollCol = headers.reduce((best, h) =>
-      scoreCol(h, rollKeywords) > scoreCol(best, rollKeywords) ? h : best, headers[0]);
-    const nameCol = headers.reduce((best, h) =>
-      scoreCol(h, nameKeywords) > scoreCol(best, nameKeywords) ? h : best,
-      headers.find((h) => h !== rollCol) || headers[0]);
+    const isPhoneCol = (h) => phoneKws.some((kw) => h.toLowerCase().includes(kw));
 
-    console.log(`[PlacementParser] Roll column: "${rollCol}", Name column: "${nameCol}"`);
+    const scoreRoll = (h) => {
+      const l = h.toLowerCase();
+      return rollHigh.reduce((s, kw) => s + (l.includes(kw) ? 2 : 0), 0) +
+             rollLow.reduce((s,  kw) => s + (l.includes(kw) ? 1 : 0), 0);
+    };
+    const scoreName = (h) => {
+      const l = h.toLowerCase();
+      return nameHigh.reduce((s, kw) => s + (l.includes(kw) ? 2 : 0), 0) +
+             nameLow.reduce((s,  kw) => s + (l.includes(kw) ? 1 : 0), 0);
+    };
 
+    // Roll column: exclude serial-number and phone columns.
+    const rollCandidates = headers.filter((h) => !isSerialCol(h) && !isPhoneCol(h));
+    const rollColPool = rollCandidates.length > 0 ? rollCandidates : headers.filter((h) => !isSerialCol(h));
+    const rollCol = rollColPool.reduce((best, h) =>
+      scoreRoll(h) > scoreRoll(best) ? h : best, rollColPool[0]);
+
+    // Name column: exclude rollCol and phone columns.
+    const nameCandidates = headers.filter((h) => h !== rollCol && !isPhoneCol(h));
+    const nameColPool = nameCandidates.length > 0 ? nameCandidates : headers.filter((h) => h !== rollCol);
+    const nameCol = nameColPool.reduce((best, h) =>
+      scoreName(h) > scoreName(best) ? h : best, nameColPool[0]);
+
+    // Phone number column (optional — null if not found).
+    const phoneColPool = headers.filter((h) => h !== rollCol && h !== nameCol && isPhoneCol(h));
+    const phoneCol = phoneColPool.length > 0 ? phoneColPool[0] : null;
+
+    console.log(`[PlacementParser] Roll: "${rollCol}", Name: "${nameCol}"${phoneCol ? `, Phone: "${phoneCol}"` : ''}`);
+
+    // Sanitize a cell value: handle numbers (avoid "123.0"), non-breaking spaces, etc.
+    const clean = (val) => {
+      if (val === null || val === undefined) return '';
+      if (typeof val === 'number') return String(Number.isInteger(val) ? val : Math.round(val));
+      return String(val).replace(/[ ​\t\r\n]+/g, ' ').trim();
+    };
+
+    const rollColHeader = rollCol.toUpperCase().trim();
     const students = [];
     const seen = new Set();
 
     rawData.forEach((row) => {
-      const rollNumber = String(row[rollCol] ?? '').trim().toUpperCase();
-      const name = String(row[nameCol] ?? '').trim();
+      const rollNumber = clean(row[rollCol]).toUpperCase();
+      const name = clean(row[nameCol]);
 
-      if (!rollNumber && !name) return;
-      if (!rollNumber || !name) return;
+      if (!rollNumber && !name) return;           // fully empty row
+      if (!rollNumber || !name) return;           // partial row
+      if (rollNumber === rollColHeader) return;   // repeated header row
       if (seen.has(rollNumber)) return;
       seen.add(rollNumber);
 
-      students.push({ rollNumber, name });
+      const phoneNumber = phoneCol ? clean(row[phoneCol]) || null : null;
+      students.push({ rollNumber, name, ...(phoneNumber ? { phoneNumber } : {}) });
     });
 
     if (students.length === 0) {

@@ -102,12 +102,12 @@ class _PlacementScannerScreenState extends State<PlacementScannerScreen> {
 
     final tabs = _isVirtual
         ? const [
-            Tab(text: 'QR CODE', icon: Icon(Icons.qr_code_2)),
-            Tab(text: 'LIVE ATTENDANCE', icon: Icon(Icons.people_alt)),
+            Tab(icon: Icon(Icons.qr_code_2), text: 'QR Code'),
+            Tab(icon: Icon(Icons.people_alt), text: 'Live'),
           ]
         : const [
-            Tab(text: 'SCANNER', icon: Icon(Icons.qr_code_scanner)),
-            Tab(text: 'LIVE ATTENDANCE', icon: Icon(Icons.people_alt)),
+            Tab(icon: Icon(Icons.qr_code_scanner), text: 'Scanner'),
+            Tab(icon: Icon(Icons.people_alt), text: 'Live'),
           ];
 
     return PopScope(
@@ -126,7 +126,20 @@ class _PlacementScannerScreenState extends State<PlacementScannerScreen> {
               icon: const Icon(Icons.arrow_back),
               onPressed: () => _handleBack(context),
             ),
-            bottom: TabBar(tabs: tabs),
+            bottom: TabBar(
+              tabs: tabs,
+              indicator: BoxDecoration(
+                borderRadius: BorderRadius.circular(30),
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicatorPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              labelColor: Theme.of(context).colorScheme.onPrimary,
+              unselectedLabelColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+              labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              unselectedLabelStyle: const TextStyle(fontSize: 12),
+              dividerColor: Colors.transparent,
+            ),
           ),
           body: TabBarView(
             physics: const NeverScrollableScrollPhysics(),

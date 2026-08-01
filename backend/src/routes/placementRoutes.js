@@ -32,6 +32,9 @@ router.get('/sessions/:id/report', placementController.getReport.bind(placementC
 // GET /api/v1/placement/sessions/:id/report/excel — download Excel workbook
 router.get('/sessions/:id/report/excel', placementController.downloadExcelReport.bind(placementController));
 
+// DELETE /api/v1/placement/sessions/:id — owner-only hard delete
+router.delete('/sessions/:id', placementController.deleteSession.bind(placementController));
+
 // POST /api/v1/placement/sessions/:id/finalize — lock attendance permanently
 router.post('/sessions/:id/finalize', placementController.finalizeSession.bind(placementController));
 

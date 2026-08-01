@@ -174,6 +174,21 @@ class PlacementRepository {
     }
   }
 
+  Future<void> deleteSession(String sessionId) async {
+    try {
+      final response = await _apiService.client.delete(
+        ApiConstants.placementSessionById(sessionId),
+      );
+      final authResponse = AuthResponseModel.fromJson(response.data);
+      if (!authResponse.success) throw ApiException(authResponse.message);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString());
+    }
+  }
+
   Future<List<FacultyModel>> getFaculty() async {
     try {
       final response =

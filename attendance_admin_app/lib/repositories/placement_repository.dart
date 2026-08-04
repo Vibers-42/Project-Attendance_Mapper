@@ -158,6 +158,48 @@ class PlacementRepository {
     }
   }
 
+  Future<PlacementSessionModel> startSession(String sessionId) async {
+    try {
+      final response = await _apiService.client.patch(
+        ApiConstants.placementSessionStart(sessionId),
+      );
+      final authResponse = AuthResponseModel.fromJson(response.data);
+      if (authResponse.success && authResponse.dataAsMap != null) {
+        return PlacementSessionModel.fromJson(
+            authResponse.dataAsMap!['session'] as Map<String, dynamic>);
+      }
+      throw ApiException(authResponse.message);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString());
+    }
+  }
+
+  Future<PlacementSessionModel> updateDraft(
+    String sessionId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _apiService.client.patch(
+        ApiConstants.placementSessionById(sessionId),
+        data: data,
+      );
+      final authResponse = AuthResponseModel.fromJson(response.data);
+      if (authResponse.success && authResponse.dataAsMap != null) {
+        return PlacementSessionModel.fromJson(
+            authResponse.dataAsMap!['session'] as Map<String, dynamic>);
+      }
+      throw ApiException(authResponse.message);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString());
+    }
+  }
+
   Future<void> finalizeSession(String sessionId, List<String> rollNumbers) async {
     try {
       final response = await _apiService.client.post(

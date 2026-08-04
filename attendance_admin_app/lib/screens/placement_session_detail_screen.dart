@@ -4,6 +4,7 @@ import 'package:open_file/open_file.dart';
 import 'package:provider/provider.dart';
 
 import '../models/placement_session_model.dart';
+import '../providers/auth_provider.dart';
 import '../providers/placement_provider.dart';
 
 class PlacementSessionDetailScreen extends StatelessWidget {
@@ -128,7 +129,7 @@ class PlacementSessionDetailScreen extends StatelessWidget {
             ],
 
             // Action section
-            _ActionSection(session: session, cs: cs, context: context),
+            _ActionSection(session: session, cs: cs),
 
             // Delete — OWNER only
             if (session.myRole == 'OWNER') ...[
@@ -144,29 +145,59 @@ class PlacementSessionDetailScreen extends StatelessWidget {
 
 // ── Action section ────────────────────────────────────────────────────────────
 
-class _ActionSection extends StatelessWidget {
+class _ActionSection extends StatefulWidget {
   final PlacementSessionModel session;
   final ColorScheme cs;
-  final BuildContext context;
 
-  const _ActionSection({
-    required this.session,
-    required this.cs,
-    required this.context,
-  });
+  const _ActionSection({required this.session, required this.cs});
 
-  void _showComingSoon(BuildContext ctx, String feature) {
-    ScaffoldMessenger.of(ctx).showSnackBar(
-      SnackBar(
-        content: Text('$feature — coming soon.'),
-        behavior: SnackBarBehavior.floating,
-      ),
+  @override
+  State<_ActionSection> createState() => _ActionSectionState();
+}
+
+class _ActionSectionState extends State<_ActionSection> {
+  bool _isStarting = false;
+
+  Future<void> _startSession() async {
+    setState(() => _isStarting = true);
+    try {
+      final provider =
+          Provider.of<PlacementProvider>(context, listen: false);
+      final updated = await provider.startSession(widget.session.id);
+      if (!mounted) return;
+      if (updated == null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text(provider.errorMessage ?? 'Failed to start session.'),
+          backgroundColor: Colors.red.shade700,
+        ));
+        provider.clearError();
+        return;
+      }
+      // Replace the detail screen with the scanner so back returns to list.
+      Navigator.pushReplacementNamed(
+        context,
+        '/placement_scanner',
+        arguments: updated,
+      );
+    } finally {
+      if (mounted) setState(() => _isStarting = false);
+    }
+  }
+
+  void _editSession() {
+    Navigator.pushNamed(
+      context,
+      '/placement_create_session',
+      arguments: widget.session,
     );
   }
 
   @override
-  Widget build(BuildContext ctx) {
-    final theme = Theme.of(ctx);
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = widget.cs;
+    final session = widget.session;
 
     switch (session.status) {
       case 'DRAFT':
@@ -174,7 +205,7 @@ class _ActionSection extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This session is scheduled.',
+              'This session is saved as a draft.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: cs.onSurface.withValues(alpha: 0.65),
               ),
@@ -184,9 +215,16 @@ class _ActionSection extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  icon: const Icon(Icons.play_arrow_outlined),
-                  label: const Text('Start Session'),
-                  onPressed: () => _showComingSoon(ctx, 'Starting session'),
+                  icon: _isStarting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.play_arrow_outlined),
+                  label: Text(_isStarting ? 'Starting…' : 'Start Session'),
+                  onPressed: _isStarting ? null : _startSession,
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
@@ -201,7 +239,7 @@ class _ActionSection extends StatelessWidget {
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.edit_outlined),
                   label: const Text('Edit Session'),
-                  onPressed: () => _showComingSoon(ctx, 'Editing session'),
+                  onPressed: _isStarting ? null : _editSession,
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
@@ -215,24 +253,31 @@ class _ActionSection extends StatelessWidget {
         );
 
       case 'ACTIVE':
+        final currentUserId =
+            Provider.of<AuthProvider>(context, listen: false).currentUser?.id;
+        final isConductor = session.conductedById == null ||
+            session.conductedById == currentUserId;
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _InfoBanner(
               icon: Icons.sensors,
-              message: 'This session is currently live.',
+              message: isConductor
+                  ? 'This session is currently live.'
+                  : 'Attendance is currently in progress by another authorized faculty.',
               cs: cs,
-              color: cs.primary,
+              color: isConductor ? cs.primary : Colors.orange.shade700,
             ),
-            const SizedBox(height: 16),
-            if (session.isOwnerOrEditor)
+            if (isConductor && session.isOwnerOrEditor) ...[
+              const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
                   icon: const Icon(Icons.how_to_reg_outlined),
                   label: const Text('Take Attendance'),
                   onPressed: () => Navigator.pushNamed(
-                    ctx,
+                    context,
                     '/placement_scanner',
                     arguments: session,
                   ),
@@ -244,6 +289,7 @@ class _ActionSection extends StatelessWidget {
                   ),
                 ),
               ),
+            ],
           ],
         );
 
@@ -257,7 +303,7 @@ class _ActionSection extends StatelessWidget {
                 icon: const Icon(Icons.bar_chart_outlined),
                 label: const Text('View Report'),
                 onPressed: () => Navigator.pushNamed(
-                  ctx,
+                  context,
                   '/placement_report',
                   arguments: session,
                 ),
@@ -288,7 +334,7 @@ class _ActionSection extends StatelessWidget {
                   onPressed: provider.isDownloadingExcel
                       ? null
                       : () async {
-                          final messenger = ScaffoldMessenger.of(ctx);
+                          final messenger = ScaffoldMessenger.of(context);
                           final path = await provider.downloadReportExcel(
                               session.id, session.title);
                           if (path != null) {
@@ -341,6 +387,7 @@ class _ActionSection extends StatelessWidget {
   }
 }
 
+
 // ── Sub-widgets ───────────────────────────────────────────────────────────────
 
 class _StatusBadge extends StatelessWidget {
@@ -352,7 +399,7 @@ class _StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, color) = switch (status) {
       'ACTIVE' => ('● Live', Colors.blue.shade600),
-      'DRAFT' => ('Scheduled', Colors.orange.shade700),
+      'DRAFT' => ('Draft', Colors.orange.shade700),
       'COMPLETED' => ('Completed', Colors.green.shade700),
       _ => ('Cancelled', Colors.grey.shade500),
     };
@@ -524,7 +571,7 @@ class _DeleteSessionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Consumer<PlacementProvider>(
-      builder: (_, provider, __) => SizedBox(
+      builder: (context2, provider, child2) => SizedBox(
         width: double.infinity,
         child: OutlinedButton.icon(
           icon: provider.isDeletingSession

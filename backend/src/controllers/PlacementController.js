@@ -82,13 +82,36 @@ class PlacementController {
 
   async downloadExcelReport(req, res) {
     const { id } = req.params;
-    const { session, presentStudents, absentStudents } =
-      await placementService.getSessionReport(id, req.user.id);
-    const buffer = placementService.generateReportExcel(session.title, presentStudents, absentStudents);
-    const safeName = session.title.replace(/[^a-z0-9]/gi, '_').substring(0, 50);
+    const reportData = await placementService.getSessionReport(id, req.user.id);
+    const buffer = await placementService.generateReportExcel(reportData);
+    const safeName = reportData.session.title.replace(/[^a-z0-9]/gi, '_').substring(0, 50);
     res.setHeader('Content-Disposition', `attachment; filename="placement_report_${safeName}.xlsx"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     return res.send(buffer);
+  }
+
+  async startSession(req, res) {
+    const { id } = req.params;
+    const session = await placementService.startSession(id, req.user.id);
+    return sendSuccess(res, {
+      data: { session },
+      message: 'Placement session started successfully.',
+    });
+  }
+
+  async updateDraft(req, res) {
+    const { id } = req.params;
+    const { title, date, venue, attendanceMode, students } = req.body;
+    const session = await placementService.updateDraft(
+      req.user.id,
+      id,
+      { title, date, venue, attendanceMode },
+      students,
+    );
+    return sendSuccess(res, {
+      data: { session },
+      message: 'Draft updated successfully.',
+    });
   }
 
   async deleteSession(req, res) {

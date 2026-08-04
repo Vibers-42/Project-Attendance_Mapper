@@ -29,10 +29,11 @@ model Faculty {
   isActive          Boolean             @default(true)
   lastLoginAt       DateTime?
   passwordChangedAt DateTime?
-  sessions                 AttendanceSession[]
-  timetableEntries         TimetableEntry[]
-  placementSessionsCreated PlacementSession[]
-  placementPermissions     PlacementSessionPermission[]
+  sessions                   AttendanceSession[]
+  timetableEntries           TimetableEntry[]
+  placementSessionsCreated   PlacementSession[] @relation("PlacementCreator")
+  placementSessionsConducted PlacementSession[] @relation("PlacementConductor")
+  placementPermissions       PlacementSessionPermission[]
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 }
@@ -276,7 +277,11 @@ model PlacementSession {
 
   // Faculty who created the session; automatically granted OWNER permission.
   createdById String
-  createdBy   Faculty @relation(fields: [createdById], references: [id])
+  createdBy   Faculty @relation("PlacementCreator", fields: [createdById], references: [id])
+
+  // Faculty currently conducting a live session (set when DRAFT → ACTIVE).
+  conductedById String?
+  conductedBy   Faculty? @relation("PlacementConductor", fields: [conductedById], references: [id], onDelete: SetNull)
 
   students    PlacementStudent[]
   permissions PlacementSessionPermission[]
@@ -285,6 +290,7 @@ model PlacementSession {
   updatedAt DateTime @updatedAt
 
   @@index([createdById])
+  @@index([conductedById])
   @@index([status])
   @@index([date])
   @@index([status, date]) // list active sessions sorted by date

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../models/placement_session_model.dart';
+import '../providers/auth_provider.dart';
 import '../providers/placement_provider.dart';
 import '../utils/app_route_observer.dart';
 
@@ -55,7 +56,7 @@ class _PlacementSessionsScreenState extends State<PlacementSessionsScreen>
             isScrollable: false,
             tabs: [
               Tab(text: 'All'),
-              Tab(text: 'Scheduled'),
+              Tab(text: 'Saved Drafts'),
               Tab(text: 'Live'),
               Tab(text: 'Completed'),
             ],
@@ -99,7 +100,7 @@ class _PlacementSessionsScreenState extends State<PlacementSessionsScreen>
                   sessions: scheduled,
                   isRefreshing: provider.isLoadingSessions,
                   onRefresh: () => provider.fetchSessions(),
-                  emptyMessage: 'No scheduled sessions.',
+                  emptyMessage: 'No saved drafts.',
                   emptyIcon: Icons.event_outlined,
                 ),
                 _SessionTab(
@@ -179,10 +180,6 @@ class _SessionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-
-    final dateStr =
-        DateFormat('dd MMM yyyy').format(session.date.toLocal());
-    final timeStr = DateFormat('h:mm a').format(session.date.toLocal());
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -287,6 +284,52 @@ class _SessionCard extends StatelessWidget {
   }
 
   void _openDetail(BuildContext context) {
+    final currentUserId =
+        Provider.of<AuthProvider>(context, listen: false).currentUser?.id;
+
+    // No permission at all
+    if (session.myRole == null) {
+      showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Access Restricted'),
+          content: const Text(
+            'You do not have permission to access this Placement Session.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // Session is live and being conducted by someone else
+    if (session.status == 'ACTIVE' &&
+        session.conductedById != null &&
+        session.conductedById != currentUserId) {
+      showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Session In Progress'),
+          content: const Text(
+            'Attendance is currently in progress by another authorized faculty. '
+            'The session will be accessible once it is completed.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     Navigator.pushNamed(
       context,
       '/placement_session_detail',
@@ -311,10 +354,30 @@ class _ActionButton extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    // No permission — show a disabled "No Access" button
+    if (session.myRole == null) {
+      return SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          icon: const Icon(Icons.lock_outline, size: 18),
+          label: const Text('No Access'),
+          onPressed: onTap,
+          style: FilledButton.styleFrom(
+            backgroundColor: cs.surfaceContainerHighest,
+            foregroundColor: cs.onSurface.withValues(alpha: 0.45),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
+      );
+    }
+
     final label = switch (session.status) {
       'COMPLETED' => 'View Report',
       'ACTIVE' => 'Resume',
-      _ => session.isOwnerOrEditor ? 'Resume' : 'View',
+      _ => session.isOwnerOrEditor ? 'Manage' : 'View',
     };
 
     final icon = switch (session.status) {
@@ -379,7 +442,7 @@ class _StatusBadgeState extends State<_StatusBadge>
   Widget build(BuildContext context) {
     final (label, color) = switch (widget.status) {
       'ACTIVE' => ('Live', Colors.blue.shade600),
-      'DRAFT' => ('Scheduled', Colors.orange.shade700),
+      'DRAFT' => ('Draft', Colors.orange.shade700),
       'COMPLETED' => ('Completed', Colors.green.shade700),
       _ => ('Cancelled', Colors.grey.shade500),
     };
@@ -397,7 +460,7 @@ class _StatusBadgeState extends State<_StatusBadge>
           if (widget.status == 'ACTIVE' && _pulse != null) ...[
             AnimatedBuilder(
               animation: _pulse!,
-              builder: (_, __) => Container(
+              builder: (context2, anim) => Container(
                 width: 7,
                 height: 7,
                 decoration: BoxDecoration(

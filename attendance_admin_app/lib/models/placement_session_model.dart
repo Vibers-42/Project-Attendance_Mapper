@@ -9,6 +9,10 @@ class PlacementSessionModel {
   final int permissionCount;
   // Populated by the list endpoint; null when coming from the create endpoint.
   final String? myRole;
+  // Faculty name who created the session.
+  final String? createdByName;
+  // Faculty ID currently conducting the session (non-null while ACTIVE).
+  final String? conductedById;
 
   const PlacementSessionModel({
     required this.id,
@@ -20,6 +24,8 @@ class PlacementSessionModel {
     required this.studentCount,
     required this.permissionCount,
     this.myRole,
+    this.createdByName,
+    this.conductedById,
   });
 
   factory PlacementSessionModel.fromJson(Map<String, dynamic> json) {
@@ -34,6 +40,8 @@ class PlacementSessionModel {
       studentCount: counts['students'] as int? ?? 0,
       permissionCount: counts['permissions'] as int? ?? 0,
       myRole: json['myRole'] as String?,
+      createdByName: json['createdByName'] as String?,
+      conductedById: json['conductedById'] as String?,
     );
   }
 

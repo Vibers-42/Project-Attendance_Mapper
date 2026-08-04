@@ -32,6 +32,12 @@ router.get('/sessions/:id/report', placementController.getReport.bind(placementC
 // GET /api/v1/placement/sessions/:id/report/excel — download Excel workbook
 router.get('/sessions/:id/report/excel', placementController.downloadExcelReport.bind(placementController));
 
+// PATCH /api/v1/placement/sessions/:id/start — transition DRAFT → ACTIVE
+router.patch('/sessions/:id/start', placementController.startSession.bind(placementController));
+
+// PATCH /api/v1/placement/sessions/:id — update a draft session's fields / students
+router.patch('/sessions/:id', placementController.updateDraft.bind(placementController));
+
 // DELETE /api/v1/placement/sessions/:id — owner-only hard delete
 router.delete('/sessions/:id', placementController.deleteSession.bind(placementController));
 

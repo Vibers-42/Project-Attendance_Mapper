@@ -4,6 +4,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:vibration/vibration.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/placement_session_model.dart';
 import '../models/placement_attendance_entry.dart';
@@ -609,7 +610,8 @@ class _LiveAttendanceTabState extends State<_LiveAttendanceTab> {
           duration: Duration(seconds: 3),
         ),
       );
-      nav.pop();
+      nav.popUntil(
+          (route) => route.settings.name == '/placement_sessions' || route.isFirst);
     } else {
       messenger.showSnackBar(
         SnackBar(
@@ -1100,6 +1102,27 @@ class _VirtualQrTab extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
 
+          const SizedBox(height: 20),
+
+          // Share button
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.share_outlined),
+              label: const Text('Share Attendance Link'),
+              onPressed: () => Share.share(
+                attendUrl,
+                subject: '${session.title} — Attendance Link',
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+
           const SizedBox(height: 24),
 
           // Eligible count
@@ -1189,7 +1212,8 @@ class _VirtualLiveTabState extends State<_VirtualLiveTab> {
           duration: Duration(seconds: 3),
         ),
       );
-      nav.pop();
+      nav.popUntil(
+          (route) => route.settings.name == '/placement_sessions' || route.isFirst);
     } else {
       messenger.showSnackBar(
         SnackBar(

@@ -64,6 +64,7 @@ class PlacementProvider with ChangeNotifier {
   bool _isDownloadingExcel = false;
   String? _downloadError;
   bool _isDeletingSession = false;
+  bool _isStartingSession = false;
 
   // ── Virtual scanner state ─────────────────────────────────────────────────
 
@@ -131,6 +132,7 @@ class PlacementProvider with ChangeNotifier {
   bool get isDownloadingExcel => _isDownloadingExcel;
   String? get downloadError => _downloadError;
   bool get isDeletingSession => _isDeletingSession;
+  bool get isStartingSession => _isStartingSession;
 
   // ── Getters — virtual scanner ─────────────────────────────────────────────
 
@@ -426,6 +428,68 @@ class PlacementProvider with ChangeNotifier {
       return null;
     } finally {
       _isDownloadingExcel = false;
+      notifyListeners();
+    }
+  }
+
+  Future<PlacementSessionModel?> startSession(String sessionId) async {
+    if (_isStartingSession) return null;
+    _isStartingSession = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final session = await _repository.startSession(sessionId);
+      // Update in-place in the cached list so tabs reflect ACTIVE status.
+      _sessions = _sessions
+          .map((s) => s.id == sessionId ? session : s)
+          .toList();
+      return session;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      return null;
+    } catch (_) {
+      _errorMessage = 'Failed to start session.';
+      return null;
+    } finally {
+      _isStartingSession = false;
+      notifyListeners();
+    }
+  }
+
+  Future<PlacementSessionModel?> updateDraft({
+    required String sessionId,
+    required String title,
+    required DateTime dateTime,
+    String? venue,
+    String? attendanceMode,
+  }) async {
+    if (_isLoading) return null;
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final data = {
+        'title': title,
+        'date': dateTime.toUtc().toIso8601String(),
+        'venue': venue,
+        'attendanceMode': attendanceMode,
+        if (_parsedStudents.isNotEmpty)
+          'students': _parsedStudents.map((s) => s.toJson()).toList(),
+      };
+      final session = await _repository.updateDraft(sessionId, data);
+      _sessions = _sessions
+          .map((s) => s.id == sessionId ? session : s)
+          .toList();
+      _resetFormState();
+      return session;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      return null;
+    } catch (_) {
+      _errorMessage = 'Failed to update session.';
+      return null;
+    } finally {
+      _isLoading = false;
       notifyListeners();
     }
   }

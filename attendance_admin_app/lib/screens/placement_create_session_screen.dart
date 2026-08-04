@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../models/placement_session_model.dart';
+import '../providers/auth_provider.dart';
 import '../providers/placement_provider.dart';
 
 class PlacementCreateSessionScreen extends StatefulWidget {
@@ -23,11 +25,32 @@ class _PlacementCreateSessionScreenState
   TimeOfDay _selectedTime = TimeOfDay.now();
   String _attendanceMode = 'OFFLINE';
 
+  // Edit mode
+  PlacementSessionModel? _editSession;
+  bool _isEditMode = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final arg = ModalRoute.of(context)?.settings.arguments;
+      if (arg is PlacementSessionModel) {
+        _editSession = arg;
+        _isEditMode = true;
+        _prefillForm(arg);
+      }
       Provider.of<PlacementProvider>(context, listen: false).loadFaculty();
+    });
+  }
+
+  void _prefillForm(PlacementSessionModel session) {
+    _titleController.text = session.title;
+    _venueController.text = session.venue ?? '';
+    final local = session.date.toLocal();
+    setState(() {
+      _selectedDate = local;
+      _selectedTime = TimeOfDay(hour: local.hour, minute: local.minute);
+      _attendanceMode = session.attendanceMode ?? 'OFFLINE';
     });
   }
 
@@ -91,13 +114,65 @@ class _PlacementCreateSessionScreenState
     }
   }
 
-  // ── Session creation ───────────────────────────────────────────────────────
+  // ── Session creation / update ──────────────────────────────────────────────
 
   Future<void> _submit(PlacementProvider provider,
       {required bool startImmediately}) async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Eligibility list is mandatory.
+    final bool hasEligibilityList =
+        provider.hasStudents || (_isEditMode && (_editSession?.studentCount ?? 0) > 0);
+
+    if (!hasEligibilityList) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Please upload the eligibility list before proceeding.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     final venue = _venueController.text.trim();
+
+    if (_isEditMode && _editSession != null) {
+      // ── Edit mode: update the existing draft ──────────────────────────────
+      final updated = await provider.updateDraft(
+        sessionId: _editSession!.id,
+        title: _titleController.text.trim(),
+        dateTime: _combinedDateTime,
+        venue: venue.isEmpty ? null : venue,
+        attendanceMode: _attendanceMode,
+      );
+
+      if (!mounted) return;
+
+      if (updated == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(provider.errorMessage ?? 'Failed to update session.'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+        provider.clearError();
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Draft updated successfully.'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      Navigator.of(context).pop(updated);
+      return;
+    }
+
+    // ── Create mode ───────────────────────────────────────────────────────────
     final session = await provider.createSession(
       title: _titleController.text.trim(),
       dateTime: _combinedDateTime,
@@ -119,15 +194,21 @@ class _PlacementCreateSessionScreenState
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(startImmediately
-            ? 'Session started — ${session.title}'
-            : 'Draft saved — ${session.title}'),
-        backgroundColor: Colors.green.shade700,
-      ),
-    );
-    Navigator.of(context).pop();
+    if (startImmediately) {
+      // Replace create screen with scanner — back goes directly to list.
+      Navigator.of(context).pushReplacementNamed(
+        '/placement_scanner',
+        arguments: session,
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Draft saved — ${session.title}'),
+          backgroundColor: Colors.green.shade700,
+        ),
+      );
+      Navigator.of(context).pop();
+    }
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -139,7 +220,9 @@ class _PlacementCreateSessionScreenState
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create Placement Session'),
+        title: Text(_isEditMode
+            ? 'Edit Session'
+            : 'Create Placement Session'),
         centerTitle: true,
       ),
       body: Form(
@@ -175,7 +258,8 @@ class _PlacementCreateSessionScreenState
                       Expanded(
                         child: _PickerCard(
                           label: 'Drive Date',
-                          value: DateFormat('dd MMM yyyy').format(_selectedDate),
+                          value: DateFormat('dd MMM yyyy')
+                              .format(_selectedDate),
                           icon: Icons.calendar_today_outlined,
                           onTap: _pickDate,
                           cs: cs,
@@ -256,6 +340,15 @@ class _PlacementCreateSessionScreenState
                       onClear: provider.clearStudents,
                       cs: cs,
                     ),
+                  ] else if (_isEditMode &&
+                      (_editSession?.studentCount ?? 0) > 0) ...[
+                    // Edit mode: show existing count, allow replacement
+                    _ExistingStudentsBanner(
+                      count: _editSession!.studentCount,
+                      onReplace: () => _pickAndUploadExcel(provider),
+                      cs: cs,
+                      isLoading: provider.isParsingExcel,
+                    ),
                   ] else ...[
                     SizedBox(
                       width: double.infinity,
@@ -275,7 +368,8 @@ class _PlacementCreateSessionScreenState
                             ? null
                             : () => _pickAndUploadExcel(provider),
                         style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -289,7 +383,7 @@ class _PlacementCreateSessionScreenState
                   _SectionLabel('Session Permissions'),
                   const SizedBox(height: 4),
                   Text(
-                    'Faculty you add can view or edit this session.',
+                    'You are the owner. Add other faculty below.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: cs.onSurface.withValues(alpha: 0.55),
                     ),
@@ -315,9 +409,11 @@ class _PlacementCreateSessionScreenState
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.person_add_alt_outlined),
                       label: const Text('Add Faculty'),
-                      onPressed: () => _showFacultyPicker(context, provider),
+                      onPressed: () =>
+                          _showFacultyPicker(context, provider),
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -337,11 +433,38 @@ class _PlacementCreateSessionScreenState
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
           child: Consumer<PlacementProvider>(
             builder: (context, provider, _) {
+              final busy = provider.isLoading;
+
+              if (_isEditMode) {
+                return SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: busy
+                        ? null
+                        : () => _submit(provider, startImmediately: false),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: busy
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Save Changes'),
+                  ),
+                );
+              }
+
               return Row(
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: provider.isLoading
+                      onPressed: busy
                           ? null
                           : () =>
                               _submit(provider, startImmediately: false),
@@ -357,7 +480,7 @@ class _PlacementCreateSessionScreenState
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton(
-                      onPressed: provider.isLoading
+                      onPressed: busy
                           ? null
                           : () =>
                               _submit(provider, startImmediately: true),
@@ -367,14 +490,12 @@ class _PlacementCreateSessionScreenState
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: provider.isLoading
+                      child: busy
                           ? const SizedBox(
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
+                                  strokeWidth: 2, color: Colors.white),
                             )
                           : const Text('Start Session'),
                     ),
@@ -400,6 +521,8 @@ class _PlacementCreateSessionScreenState
       );
 
   void _showFacultyPicker(BuildContext context, PlacementProvider provider) {
+    final currentUserId =
+        context.read<AuthProvider>().currentUser?.id;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -407,7 +530,10 @@ class _PlacementCreateSessionScreenState
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _FacultyPickerSheet(provider: provider),
+      builder: (_) => _FacultyPickerSheet(
+        provider: provider,
+        excludeId: currentUserId,
+      ),
     );
   }
 }
@@ -546,6 +672,62 @@ class _StudentsLoadedBanner extends StatelessWidget {
   }
 }
 
+class _ExistingStudentsBanner extends StatelessWidget {
+  final int count;
+  final VoidCallback onReplace;
+  final ColorScheme cs;
+  final bool isLoading;
+
+  const _ExistingStudentsBanner({
+    required this.count,
+    required this.onReplace,
+    required this.cs,
+    required this.isLoading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.people_outline,
+              color: cs.onSurface.withValues(alpha: 0.6), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '$count student${count == 1 ? '' : 's'} saved in this session',
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: cs.onSurface.withValues(alpha: 0.75),
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: isLoading ? null : onReplace,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: isLoading
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Replace'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PermissionTile extends StatelessWidget {
   final PlacementPermissionEntry entry;
   final ValueChanged<String> onRoleChanged;
@@ -654,8 +836,9 @@ class _PermissionTile extends StatelessWidget {
 
 class _FacultyPickerSheet extends StatefulWidget {
   final PlacementProvider provider;
+  final String? excludeId;
 
-  const _FacultyPickerSheet({required this.provider});
+  const _FacultyPickerSheet({required this.provider, this.excludeId});
 
   @override
   State<_FacultyPickerSheet> createState() => _FacultyPickerSheetState();
@@ -681,6 +864,7 @@ class _FacultyPickerSheetState extends State<_FacultyPickerSheet> {
         .toSet();
 
     final filtered = widget.provider.availableFaculty
+        .where((f) => f.id != widget.excludeId) // exclude session creator
         .where((f) => !selectedIds.contains(f.id))
         .where((f) =>
             _query.isEmpty ||

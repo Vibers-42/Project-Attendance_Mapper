@@ -1,11 +1,14 @@
 const prisma = require('../config/prisma');
+const { ForbiddenError, NotFoundError, BadRequestError } = require('../utils/AppError');
 
 class PlacementRepository {
+  // ── Session creation ──────────────────────────────────────────────────────────
+
   /**
-   * Creates a PlacementSession with its students and permissions in a single transaction.
-   * @param {Object} sessionData - Prisma-ready session fields (no id, no relations)
-   * @param {{ rollNumber: string, name: string }[]} students
-   * @param {{ facultyId: string, role: string }[]} permissions - sessionId injected inside tx
+   * Creates a PlacementSession with its students and permissions in one transaction.
+   * @param {Object} sessionData  - Prisma-ready session fields
+   * @param {{ rollNumber, name, phoneNumber? }[]} students
+   * @param {{ facultyId, role }[]} permissions - sessionId is injected inside tx
    */
   async createSession(sessionData, students, permissions) {
     return prisma.$transaction(async (tx) => {
@@ -37,21 +40,22 @@ class PlacementRepository {
         where: { id: session.id },
         include: {
           _count: { select: { students: true, permissions: true } },
+          createdBy: { select: { name: true } },
         },
       });
     });
   }
 
+  // ── Session list ──────────────────────────────────────────────────────────────
+
   /**
-   * Returns all placement sessions accessible to a faculty member (via permissions),
-   * with the faculty's own role flattened onto each session.
+   * Returns ALL placement sessions visible to every faculty.
+   * myRole is the requesting faculty's permission role, or null if they have no
+   * explicit permission entry (visibility-only, no access to session internals).
    * @param {string} facultyId
    */
   async getSessionsForFaculty(facultyId) {
     const raw = await prisma.placementSession.findMany({
-      where: {
-        permissions: { some: { facultyId } },
-      },
       include: {
         _count: { select: { students: true } },
         permissions: {
@@ -59,15 +63,19 @@ class PlacementRepository {
           select: { role: true },
           take: 1,
         },
+        createdBy: { select: { name: true } },
       },
       orderBy: { date: 'desc' },
     });
 
-    return raw.map(({ permissions, ...session }) => ({
+    return raw.map(({ permissions, createdBy, ...session }) => ({
       ...session,
-      myRole: permissions[0]?.role ?? 'VIEWER',
+      myRole: permissions[0]?.role ?? null,        // null = no permission
+      createdByName: createdBy?.name ?? null,
     }));
   }
+
+  // ── Faculty list ──────────────────────────────────────────────────────────────
 
   async getActiveFaculty() {
     return prisma.faculty.findMany({
@@ -77,6 +85,8 @@ class PlacementRepository {
     });
   }
 
+  // ── Session lookup ────────────────────────────────────────────────────────────
+
   async getSessionById(sessionId) {
     return prisma.placementSession.findUnique({
       where: { id: sessionId },
@@ -84,36 +94,61 @@ class PlacementRepository {
     });
   }
 
+  // ── Eligibility list ──────────────────────────────────────────────────────────
+
+  /**
+   * Returns the complete eligibility list for a session including phone numbers.
+   * Permission-gated: faculty must have an explicit permission entry.
+   */
   async getSessionStudents(sessionId, facultyId) {
     const permission = await prisma.placementSessionPermission.findFirst({
       where: { sessionId, facultyId },
     });
     if (!permission) {
-      throw Object.assign(new Error('You do not have permission to access this session.'), { statusCode: 403 });
+      throw new ForbiddenError('You do not have permission to access this session.');
     }
+
     const students = await prisma.placementStudent.findMany({
       where: { sessionId },
-      select: { rollNumber: true, name: true, attendanceStatus: true },
+      select: {
+        rollNumber: true,
+        name: true,
+        attendanceStatus: true,
+        phoneNumber: true,
+      },
       orderBy: { rollNumber: 'asc' },
     });
-    return { students, counts: { eligible: students.length } };
+
+    return {
+      students,
+      counts: {
+        eligible: students.length,
+        present: students.filter((s) => s.attendanceStatus === 'PRESENT').length,
+        absent: students.filter((s) => s.attendanceStatus === 'ABSENT').length,
+        pending: students.filter((s) => s.attendanceStatus === 'PENDING').length,
+      },
+    };
   }
+
+  // ── Attendance update ─────────────────────────────────────────────────────────
 
   async updateAttendance(sessionId, facultyId, rollNumbers) {
     const session = await prisma.placementSession.findUnique({
       where: { id: sessionId },
       select: { status: true },
     });
-    if (!session) throw Object.assign(new Error('Session not found.'), { statusCode: 404 });
+    if (!session) throw new NotFoundError('Session not found.');
     if (session.status !== 'ACTIVE') {
-      throw Object.assign(new Error('Session is not active.'), { statusCode: 400 });
+      throw new BadRequestError('Session is not active.');
     }
+
     const permission = await prisma.placementSessionPermission.findFirst({
       where: { sessionId, facultyId, role: { in: ['OWNER', 'EDITOR'] } },
     });
     if (!permission) {
-      throw Object.assign(new Error('You do not have permission to update attendance for this session.'), { statusCode: 403 });
+      throw new ForbiddenError('You do not have permission to update attendance for this session.');
     }
+
     const result = await prisma.placementStudent.updateMany({
       where: { sessionId, rollNumber: { in: rollNumbers } },
       data: { attendanceStatus: 'PRESENT', markedAt: new Date() },
@@ -121,26 +156,47 @@ class PlacementRepository {
     return { updated: result.count };
   }
 
+  // ── Report ────────────────────────────────────────────────────────────────────
+
+  /**
+   * Returns the full attendance report for a completed session.
+   * Includes createdByName for the Excel workbook summary sheet.
+   */
   async getSessionReport(sessionId, facultyId) {
     const permission = await prisma.placementSessionPermission.findFirst({
       where: { sessionId, facultyId },
     });
     if (!permission) {
-      throw Object.assign(new Error('You do not have permission to view this report.'), { statusCode: 403 });
+      throw new ForbiddenError('You do not have permission to view this report.');
     }
 
     const session = await prisma.placementSession.findUnique({
       where: { id: sessionId },
-      select: { id: true, title: true, status: true, date: true, venue: true, description: true },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        date: true,
+        venue: true,
+        description: true,       // attendanceMode
+        conductedById: true,
+        createdBy: { select: { name: true, facultyId: true } },
+      },
     });
-    if (!session) throw Object.assign(new Error('Session not found.'), { statusCode: 404 });
+    if (!session) throw new NotFoundError('Session not found.');
     if (session.status !== 'COMPLETED') {
-      throw Object.assign(new Error('Report is only available for completed sessions.'), { statusCode: 400 });
+      throw new BadRequestError('Report is only available for completed sessions.');
     }
 
     const students = await prisma.placementStudent.findMany({
       where: { sessionId },
-      select: { rollNumber: true, name: true, attendanceStatus: true, phoneNumber: true, markedAt: true },
+      select: {
+        rollNumber: true,
+        name: true,
+        attendanceStatus: true,
+        phoneNumber: true,
+        markedAt: true,
+      },
       orderBy: { rollNumber: 'asc' },
     });
 
@@ -148,7 +204,11 @@ class PlacementRepository {
     const absentStudents = students.filter((s) => s.attendanceStatus === 'ABSENT');
 
     return {
-      session,
+      session: {
+        ...session,
+        attendanceMode: session.description,
+        createdByName: session.createdBy?.name ?? null,
+      },
       eligible: students.length,
       present: presentStudents.length,
       absent: absentStudents.length,
@@ -157,25 +217,27 @@ class PlacementRepository {
     };
   }
 
+  // ── Finalize ──────────────────────────────────────────────────────────────────
+
   async finalizeSession(sessionId, facultyId, rollNumbers = []) {
     return prisma.$transaction(async (tx) => {
       const session = await tx.placementSession.findUnique({
         where: { id: sessionId },
         select: { status: true },
       });
-      if (!session) throw Object.assign(new Error('Session not found.'), { statusCode: 404 });
+      if (!session) throw new NotFoundError('Session not found.');
       if (session.status !== 'ACTIVE') {
-        throw Object.assign(new Error('Session is not active and cannot be finalized.'), { statusCode: 400 });
+        throw new BadRequestError('Session is not active and cannot be finalized.');
       }
 
       const permission = await tx.placementSessionPermission.findFirst({
         where: { sessionId, facultyId, role: { in: ['OWNER', 'EDITOR'] } },
       });
       if (!permission) {
-        throw Object.assign(new Error('You do not have permission to finalize this session.'), { statusCode: 403 });
+        throw new ForbiddenError('You do not have permission to finalize this session.');
       }
 
-      // Mark any locally-scanned (offline) roll numbers as PRESENT.
+      // Mark scanned (offline) roll numbers as PRESENT.
       if (rollNumbers.length > 0) {
         await tx.placementStudent.updateMany({
           where: { sessionId, rollNumber: { in: rollNumbers } },
@@ -183,7 +245,7 @@ class PlacementRepository {
         });
       }
 
-      // Convert all remaining PENDING students to ABSENT.
+      // All remaining PENDING students become ABSENT.
       const absentResult = await tx.placementStudent.updateMany({
         where: { sessionId, attendanceStatus: 'PENDING' },
         data: { attendanceStatus: 'ABSENT' },
@@ -193,43 +255,150 @@ class PlacementRepository {
         where: { sessionId, attendanceStatus: 'PRESENT' },
       });
 
+      // Clear conductedById on completion — session is no longer "live".
       await tx.placementSession.update({
         where: { id: sessionId },
-        data: { status: 'COMPLETED' },
+        data: { status: 'COMPLETED', conductedById: null },
       });
 
       return { presentCount, absentCount: absentResult.count };
     });
   }
 
+  // ── Start session ─────────────────────────────────────────────────────────────
+
+  /**
+   * Transitions a DRAFT session to ACTIVE and records the conducting faculty.
+   * Only OWNER or EDITOR may start a session.
+   */
+  async startSession(sessionId, facultyId) {
+    const permission = await prisma.placementSessionPermission.findFirst({
+      where: { sessionId, facultyId, role: { in: ['OWNER', 'EDITOR'] } },
+    });
+    if (!permission) {
+      throw new ForbiddenError('You do not have permission to start this session.');
+    }
+
+    const session = await prisma.placementSession.findUnique({
+      where: { id: sessionId },
+      select: { status: true },
+    });
+    if (!session) throw new NotFoundError('Session not found.');
+    if (session.status !== 'DRAFT') {
+      throw new BadRequestError('Only draft sessions can be started.');
+    }
+
+    const raw = await prisma.placementSession.update({
+      where: { id: sessionId },
+      data: { status: 'ACTIVE', conductedById: facultyId },
+      include: {
+        _count: { select: { students: true, permissions: true } },
+        permissions: { where: { facultyId }, select: { role: true }, take: 1 },
+        createdBy: { select: { name: true } },
+      },
+    });
+
+    const { permissions, createdBy, ...sessionData } = raw;
+    return {
+      ...sessionData,
+      myRole: permissions[0]?.role ?? 'VIEWER',
+      createdByName: createdBy?.name ?? null,
+    };
+  }
+
+  // ── Update draft ──────────────────────────────────────────────────────────────
+
+  async updateDraft(sessionId, facultyId, sessionData, students) {
+    const permission = await prisma.placementSessionPermission.findFirst({
+      where: { sessionId, facultyId, role: { in: ['OWNER', 'EDITOR'] } },
+    });
+    if (!permission) {
+      throw new ForbiddenError('You do not have permission to edit this session.');
+    }
+
+    const existing = await prisma.placementSession.findUnique({
+      where: { id: sessionId },
+      select: { status: true },
+    });
+    if (!existing) throw new NotFoundError('Session not found.');
+    if (existing.status !== 'DRAFT') {
+      throw new BadRequestError('Only draft sessions can be edited.');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      await tx.placementSession.update({ where: { id: sessionId }, data: sessionData });
+
+      if (students && students.length > 0) {
+        await tx.placementStudent.deleteMany({ where: { sessionId } });
+        await tx.placementStudent.createMany({
+          data: students.map((s) => ({
+            rollNumber: s.rollNumber,
+            name: s.name,
+            phoneNumber: s.phoneNumber ?? null,
+            sessionId,
+          })),
+        });
+      }
+
+      const raw = await tx.placementSession.findUnique({
+        where: { id: sessionId },
+        include: {
+          _count: { select: { students: true, permissions: true } },
+          permissions: { where: { facultyId }, select: { role: true }, take: 1 },
+          createdBy: { select: { name: true } },
+        },
+      });
+      const { permissions, createdBy, ...updated } = raw;
+      return {
+        ...updated,
+        myRole: permissions[0]?.role ?? 'VIEWER',
+        createdByName: createdBy?.name ?? null,
+      };
+    });
+  }
+
+  // ── Delete session ────────────────────────────────────────────────────────────
+
+  /**
+   * Hard-deletes a session. Cascade deletes all students and permissions automatically
+   * (defined in schema via onDelete: Cascade). Only OWNER may delete.
+   */
   async deleteSession(sessionId, facultyId) {
     const permission = await prisma.placementSessionPermission.findFirst({
       where: { sessionId, facultyId, role: 'OWNER' },
     });
     if (!permission) {
-      throw Object.assign(new Error('Only the session owner can delete this session.'), { statusCode: 403 });
+      throw new ForbiddenError('Only the session owner can delete this session.');
     }
     await prisma.placementSession.delete({ where: { id: sessionId } });
   }
 
+  // ── Virtual attendance ────────────────────────────────────────────────────────
+
+  /**
+   * Records a student's attendance via the public QR-code page.
+   * Validates that the session is ACTIVE and the roll number is in the eligibility list.
+   */
   async submitVirtualAttendance(sessionId, rollNumber, phoneNumber) {
     const session = await prisma.placementSession.findUnique({
       where: { id: sessionId },
       select: { status: true },
     });
-    if (!session) throw Object.assign(new Error('Session not found.'), { statusCode: 404 });
+    if (!session) throw new NotFoundError('Session not found.');
     if (session.status !== 'ACTIVE') {
-      throw Object.assign(new Error('This session is no longer accepting attendance.'), { statusCode: 400 });
+      throw new BadRequestError('This session is no longer accepting attendance.');
     }
 
     const student = await prisma.placementStudent.findUnique({
       where: { sessionId_rollNumber: { sessionId, rollNumber } },
     });
     if (!student) {
-      throw Object.assign(new Error('Roll number is not in the eligibility list for this session.'), { statusCode: 422 });
+      const err = new BadRequestError('Roll number is not in the eligibility list for this session.');
+      err.statusCode = 422;
+      throw err;
     }
     if (student.attendanceStatus === 'PRESENT') {
-      throw Object.assign(new Error('Attendance has already been marked for this roll number.'), { statusCode: 409 });
+      throw new BadRequestError('Attendance has already been marked for this roll number.');
     }
 
     const updated = await prisma.placementStudent.update({

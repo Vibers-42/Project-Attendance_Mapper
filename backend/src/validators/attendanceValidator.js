@@ -21,6 +21,13 @@ const startSessionSchema = Joi.object({
   date:                 Joi.date().iso().optional(),
 });
 
+const joinTemplateSchema = Joi.object({
+  roomNumber: Joi.string().trim().min(1).required().messages({
+    'string.empty': 'Room number is required.',
+    'any.required': 'Room number is required.',
+  }),
+});
+
 const submitAttendanceSchema = Joi.object({
   scannedStudents: Joi.array().items(
     Joi.string().required()
@@ -33,5 +40,6 @@ const submitAttendanceSchema = Joi.object({
 
 module.exports = {
   startSessionSchema,
+  joinTemplateSchema,
   submitAttendanceSchema
 };

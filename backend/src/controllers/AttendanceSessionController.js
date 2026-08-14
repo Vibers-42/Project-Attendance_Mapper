@@ -21,6 +21,37 @@ class AttendanceSessionController {
     });
   }
 
+  /**
+   * GET /api/v1/sessions/templates
+   * Lists Superadmin-created session templates open for Faculty to join.
+   */
+  async listTemplates(req, res) {
+    const templates = await attendanceService.listTemplates();
+    return sendSuccess(res, {
+      data: { templates },
+      message: 'Session templates retrieved successfully.',
+    });
+  }
+
+  /**
+   * POST /api/v1/sessions/templates/:id/join
+   * Faculty joins a template with their own room number, instantiating a new
+   * session row owned by them. The template itself is never mutated.
+   */
+  async joinTemplate(req, res) {
+    const { roomNumber } = req.body;
+    const session = await attendanceService.joinTemplateSession(
+      req.user.id,
+      req.params.id,
+      roomNumber,
+    );
+    return sendSuccess(res, {
+      data: { session },
+      message: 'Joined session successfully.',
+      statusCode: 201,
+    });
+  }
+
   async getSessionRecords(req, res) {
     const records = await queryService.getSessionRecords(req.params.id, req.user.id);
     return sendSuccess(res, {

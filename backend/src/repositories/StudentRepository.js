@@ -72,6 +72,22 @@ class StudentRepository {
   }
 
   /**
+   * Returns ALL students matching filters, unpaginated, sorted by timetable
+   * then roll number. Used for generating complete attendance report sheets
+   * (e.g. the "Overall Attendance" workbook sheet), where every student for
+   * the year must be listed — reuses the same roll-number-prefix year
+   * matching as the Student Master Data view (_buildFiltersWhere), so a
+   * student always appears consistently in both places regardless of
+   * whether their academicYearId FK was ever set.
+   */
+  async findAllForReport(filters = {}) {
+    return prisma.student.findMany({
+      where: this._buildFiltersWhere(filters),
+      orderBy: [{ timetable: 'asc' }, { rollNumber: 'asc' }],
+    });
+  }
+
+  /**
    * Build a SQLite-compatible search WHERE clause.
    * SQLite does not support Prisma's `mode: 'insensitive'` (that is Postgres-only).
    * SQLite's LIKE is case-insensitive for ASCII characters by default, so plain

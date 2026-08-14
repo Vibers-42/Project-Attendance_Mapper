@@ -25,6 +25,7 @@ import 'services/session_recovery_service.dart';
 
 import 'screens/login_screen.dart';
 import 'screens/create_session_screen.dart';
+import 'screens/session_hub_screen.dart';
 import 'screens/faculty_workspace_screen.dart';
 import 'screens/scanner_screen.dart';
 import 'screens/view_attendance_screen.dart';
@@ -143,6 +144,7 @@ class MyApp extends StatelessWidget {
         '/recovery': (context) => const RecoveryWrapper(),
         '/workspace': (context) => const FacultyWorkspaceScreen(),
         '/create_session': (context) => const CreateSessionScreen(),
+        '/session_hub': (context) => const SessionHubScreen(),
         '/scanner': (context) => const ScannerScreen(),
         '/view_attendance': (context) => const ViewAttendanceScreen(),
         '/session_details': (context) => const SessionDetailsScreen(),

@@ -34,6 +34,54 @@ class SessionRepository {
     }
   }
 
+  /// Lists Superadmin-created session templates open for Faculty to join.
+  Future<List<AttendanceSessionModel>> getTemplates() async {
+    try {
+      final response = await _apiService.client.get(ApiConstants.sessionTemplates);
+      final authResponse = AuthResponseModel.fromJson(response.data);
+
+      if (authResponse.success && authResponse.data != null) {
+        final templatesJson =
+            (authResponse.data!['templates'] as List?) ?? [];
+        return templatesJson
+            .map((json) =>
+                AttendanceSessionModel.fromJson(json as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString());
+    }
+  }
+
+  /// Joins a session template with [roomNumber], instantiating a new session
+  /// owned by the current faculty. The template itself is left untouched.
+  Future<AttendanceSessionModel> joinTemplate(
+      String templateId, String roomNumber) async {
+    try {
+      final response = await _apiService.client.post(
+        ApiConstants.joinSessionTemplate(templateId),
+        data: {'roomNumber': roomNumber},
+      );
+      final authResponse = AuthResponseModel.fromJson(response.data);
+
+      if (authResponse.success && authResponse.data != null) {
+        final sessionJson = authResponse.data!['session'] as Map<String, dynamic>;
+        return AttendanceSessionModel.fromJson(sessionJson);
+      } else {
+        throw ApiException(authResponse.message);
+      }
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString());
+    }
+  }
+
   Future<AttendanceSessionModel?> getActiveSession() async {
     try {
       final response = await _apiService.client.get(ApiConstants.activeSession);

@@ -190,41 +190,6 @@ class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen>
     );
   }
 
-  void _handleNewSession(BuildContext context) {
-    final provider =
-        Provider.of<AttendanceProvider>(context, listen: false);
-    if (!provider.hasActiveSession) {
-      Navigator.pushNamed(context, '/create_session');
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Active Session Found'),
-        content: const Text(
-            'You already have a session in progress. Would you like to resume it or start a completely new one?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              Navigator.pushNamed(context, '/scanner');
-            },
-            child: const Text('Resume'),
-          ),
-          FilledButton(
-            onPressed: () {
-              provider.discardSession();
-              Navigator.of(ctx).pop();
-              Navigator.pushNamed(context, '/create_session');
-            },
-            child: const Text('Start New'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildQuickActionsGrid(BuildContext context, ColorScheme cs) {
     return GridView.count(
       crossAxisCount: 2,
@@ -236,10 +201,10 @@ class _FacultyWorkspaceScreenState extends State<FacultyWorkspaceScreen>
       children: [
         ActionCard(
           icon: Icons.add_circle_outline,
-          title: 'New Session',
+          title: 'Session',
           bgColor: cs.primaryContainer.withValues(alpha: 0.6),
           iconColor: cs.primary,
-          onTap: () => _handleNewSession(context),
+          onTap: () => Navigator.pushNamed(context, '/session_hub'),
         ),
         ActionCard(
           icon: Icons.history_outlined,

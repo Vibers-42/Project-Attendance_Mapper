@@ -45,12 +45,23 @@ const authorize = (...allowedRoles) => {
         });
         if (faculty?.isActive) currentDbRole = faculty.role;
       } else {
-        // source === 'superadmin' or null (legacy token) — SuperAdmin table always has SUPER_ADMIN role
+        // source === 'superadmin', or null/undefined (legacy token minted before this
+        // claim existed) — try the SuperAdmin table first.
         const admin = await prisma.superAdmin.findUnique({
           where:  { id },
           select: { isActive: true },
         });
-        if (admin?.isActive) currentDbRole = 'SUPER_ADMIN';
+        if (admin?.isActive) {
+          currentDbRole = 'SUPER_ADMIN';
+        } else if (source !== 'superadmin') {
+          // Ambiguous/legacy token — id may actually belong to a promoted Faculty row
+          // rather than the SuperAdmin table. Fall back before concluding deactivated.
+          const faculty = await prisma.faculty.findUnique({
+            where:  { id },
+            select: { role: true, isActive: true },
+          });
+          if (faculty?.isActive) currentDbRole = faculty.role;
+        }
       }
 
       if (!currentDbRole) {

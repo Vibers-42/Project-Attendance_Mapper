@@ -35,6 +35,22 @@ class AttendanceSessionRepository {
     });
   }
 
+  /**
+   * Lists Superadmin-created session templates currently open for Faculty to
+   * join — CREATED or ACTIVE, ordered soonest-first. This is the shared
+   * "Active Sessions" source of truth for both Superadmin and Faculty views.
+   */
+  async findTemplates() {
+    return prisma.attendanceSession.findMany({
+      where: {
+        isTemplate: true,
+        status: { in: ['CREATED', 'ACTIVE'] },
+      },
+      orderBy: { date: 'asc' },
+      include: SESSION_INCLUDE,
+    });
+  }
+
   async findAll({ where = {}, skip = 0, take = 10, orderBy = { date: 'desc' } } = {}) {
     const [sessions, totalCount] = await prisma.$transaction([
       prisma.attendanceSession.findMany({

@@ -3,8 +3,27 @@ const { NotFoundError, ForbiddenError, ConflictError } = require('../utils/AppEr
 
 class AttendanceService {
   /**
-   * Initializes a new attendance session.
-   * Minimal data required. Default state is CREATED.
+   * Resolves a free-text room name to a Room id, creating the Room row if it
+   * doesn't exist yet. Shared by createSession (legacy roomId/roomNumber input)
+   * and joinTemplateSession (employee-supplied room on template join).
+   */
+  async _resolveRoomId(roomNumber) {
+    const trimmed = roomNumber?.trim();
+    if (!trimmed) return null;
+
+    const prisma = require('../config/prisma');
+    const room = await prisma.room.upsert({
+      where:  { name: trimmed },
+      update: {},
+      create: { name: trimmed },
+    });
+    return room.id;
+  }
+
+  /**
+   * Creates a Superadmin-only session template — the shared session definition
+   * that Faculty later join via joinTemplateSession(). Templates never carry a
+   * room; any roomId/roomNumber sent by the client is ignored.
    */
   async createSession(facultyId, data) {
     const prisma = require('../config/prisma');
@@ -29,29 +48,76 @@ class AttendanceService {
       academicYearId = found?.id;
     }
 
-    let roomId = data.roomId;
-    if (data.roomNumber && data.roomNumber.trim() && !roomId) {
-      const room = await prisma.room.upsert({
-        where:  { name: data.roomNumber.trim() },
-        update: {},
-        create: { name: data.roomNumber.trim() },
-      });
-      roomId = room.id;
-    }
-
-    // Strip frontend-only text fields and id (prevent client-controlled primary key).
-    const { subject, year, roomNumber: _r, subjectId: _s, academicYearId: _a, id: _id, ...rest } = data;
+    // Strip frontend-only text fields, id, and room fields — templates never
+    // carry a room (prevent client-controlled primary key too).
+    const {
+      subject, year, roomNumber: _r, roomId: _rid,
+      subjectId: _s, academicYearId: _a, id: _id, ...rest
+    } = data;
 
     const sessionData = {
       ...rest,
       facultyId,
       status: 'CREATED',
       date: data.date ? new Date(data.date) : new Date(),
+      isTemplate: true,
       ...(subjectId && { subjectId }),
       ...(academicYearId && { academicYearId }),
-      ...(roomId && { roomId }),
       // Store derived topic only when no explicit topic was provided and subject wasn't in DB
       ...(derivedTopic && !rest.topic && { topic: derivedTopic }),
+    };
+
+    return sessionRepository.create(sessionData);
+  }
+
+  /**
+   * Lists Superadmin-created session templates that are currently CREATED or
+   * ACTIVE — the "Active Sessions" list Faculty browse to join.
+   */
+  async listTemplates() {
+    return sessionRepository.findTemplates();
+  }
+
+  /**
+   * Employee "joins" a Superadmin-created template with their own room number.
+   * Copies the template's metadata into a brand-new session row owned by the
+   * joining faculty — the template row itself is never mutated, so multiple
+   * employees can join the same template independently without overwriting
+   * each other's room.
+   */
+  async joinTemplateSession(facultyId, templateId, roomNumber) {
+    const prisma = require('../config/prisma');
+    const { ValidationError } = require('../utils/AppError');
+
+    if (!roomNumber || !roomNumber.trim()) {
+      throw new ValidationError('Room number is required.');
+    }
+
+    const template = await prisma.attendanceSession.findUnique({ where: { id: templateId } });
+    if (!template || !template.isTemplate) {
+      throw new NotFoundError('Session not found.');
+    }
+    if (template.status !== 'CREATED' && template.status !== 'ACTIVE') {
+      throw new ConflictError('This session is no longer active.');
+    }
+
+    const roomId = await this._resolveRoomId(roomNumber);
+
+    const sessionData = {
+      facultyId,
+      status: 'CREATED',
+      date: template.date,
+      sessionTime: template.sessionTime,
+      semester: template.semester,
+      topic: template.topic,
+      labIncharge: template.labIncharge,
+      labInchargeEmployeeId: template.labInchargeEmployeeId,
+      subjectId: template.subjectId,
+      academicYearId: template.academicYearId,
+      sectionId: template.sectionId,
+      roomId,
+      isTemplate: false,
+      templateSessionId: template.id,
     };
 
     return sessionRepository.create(sessionData);
@@ -103,12 +169,7 @@ class AttendanceService {
 
     let roomId = data.roomId;
     if (data.roomNumber && data.roomNumber.trim() && !roomId) {
-      const room = await prisma.room.upsert({
-        where:  { name: data.roomNumber.trim() },
-        update: {},
-        create: { name: data.roomNumber.trim() },
-      });
-      roomId = room.id;
+      roomId = await this._resolveRoomId(data.roomNumber);
     }
 
     // Strip restricted and frontend-only fields

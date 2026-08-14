@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const { generateWorkbookBuffer } = require('../utils/excelGenerator');
 const { NotFoundError, BadRequestError } = require('../utils/AppError');
+const studentRepository = require('../repositories/StudentRepository');
 
 class AdminSessionReportService {
 
@@ -39,7 +40,10 @@ class AdminSessionReportService {
    */
   async listWorkbooks({ academicYear, topic, date, search, page = 1, limit = 20 } = {}) {
     // ── Build DB filter ──────────────────────────────────────────────────────
-    const where = {};
+    // isTemplate sessions are Superadmin-created shared definitions with no room
+    // and no records of their own — they must never be counted as a real
+    // classroom session or inflate sessionCount/totalRecords here.
+    const where = { isTemplate: false };
 
     if (topic && topic !== 'All') {
       // Match sessions whose topic field contains the keyword OR whose linked
@@ -185,8 +189,10 @@ class AdminSessionReportService {
 
     // ── 3. Fetch ALL sessions matching (academicYear, topic, date) ────────────
     // Constraint: academicYear + topic + date ONLY (room & faculty are NOT constraints)
+    // isTemplate sessions have no room/records of their own and must be excluded.
     const where = {
       date: { gte: dayStart, lte: dayEnd },
+      isTemplate: false,
     };
 
     // Handle null/empty topic correctly in Prisma.
@@ -252,19 +258,19 @@ class AdminSessionReportService {
     }
 
     // ── 7. Load ALL students for this academic year, sorted by timetable ──────
+    // Match by roll-number prefix (via StudentRepository.findAllForReport), the
+    // SAME rule the Student Master Data view uses to filter by year. Filtering
+    // by the academicYearId FK instead would silently drop any student whose
+    // FK was never set (e.g. added via "Add Student", which doesn't collect a
+    // year) even though they show up correctly in the Student view.
     const acYear = sessions[0].academicYear;
-    const studentWhere = { status: 'ACTIVE' };
-    if (acYear?.id) {
-      studentWhere.academicYearId = acYear.id;
-    }
-
-    let allStudents = await prisma.student.findMany({
-      where:   studentWhere,
-      orderBy: [{ timetable: 'asc' }, { rollNumber: 'asc' }],
+    let allStudents = await studentRepository.findAllForReport({
+      academicYear: acYear?.name,
+      status: 'ACTIVE',
     });
 
-    // If no students found via academicYearId (students may not have the link yet),
-    // fall back to showing only the students who were actually present in these sessions.
+    // If no students found, fall back to showing only the students who were
+    // actually present in these sessions.
     if (allStudents.length === 0 && presentRollNumbers.size > 0) {
       allStudents = await prisma.student.findMany({
         where:   { rollNumber: { in: [...presentRollNumbers] } },
@@ -683,7 +689,9 @@ class AdminSessionReportService {
    */
   async listRawSessions({ academicYear, topic, date, search, page = 1, limit = 50 } = {}) {
     const skip  = (Math.max(1, page) - 1) * limit;
-    const where = {};
+    // isTemplate sessions are shared definitions, not real classroom sessions —
+    // exclude them so the Session View only ever shows scanned/scannable sessions.
+    const where = { isTemplate: false };
 
     if (topic && topic !== 'All') {
       where.OR = [

@@ -9,6 +9,8 @@ class ApiConstants {
   static const String sessions = '/sessions';
   static const String activeSession = '/sessions/active';
   static String sessionRecords(String id) => '/sessions/$id/records';
+  static const String sessionTemplates = '/sessions/templates';
+  static String joinSessionTemplate(String id) => '/sessions/templates/$id/join';
 
   // Master Data Endpoints
   static const String students = '/students';

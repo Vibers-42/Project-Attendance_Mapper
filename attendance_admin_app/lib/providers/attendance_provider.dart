@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../models/attendance_session_model.dart';
 import '../repositories/local_attendance_repository.dart';
 import '../repositories/session_repository.dart';
 import '../repositories/attendance_submission_repository.dart';
@@ -141,6 +142,113 @@ class AttendanceProvider with ChangeNotifier {
         labIncharge: labIncharge,
       );
       
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  // ── Session templates (Superadmin creates, Faculty join) ────────────────────
+
+  List<AttendanceSessionModel> _templates = [];
+  bool _isLoadingTemplates = false;
+  String? _templatesError;
+
+  List<AttendanceSessionModel> get templates => List.unmodifiable(_templates);
+  bool get isLoadingTemplates => _isLoadingTemplates;
+  String? get templatesError => _templatesError;
+
+  /// Loads the Superadmin-created session templates open for Faculty to join.
+  Future<void> fetchTemplates() async {
+    _isLoadingTemplates = true;
+    _templatesError = null;
+    notifyListeners();
+    try {
+      _templates = await _sessionRepository.getTemplates();
+    } catch (e) {
+      _templatesError = e.toString().replaceAll('Exception: ', '');
+    } finally {
+      _isLoadingTemplates = false;
+      notifyListeners();
+    }
+  }
+
+  /// Superadmin creates a new session template (no room). Unlike [startSession],
+  /// this does NOT set local scanning state — a template isn't something its
+  /// creator immediately scans into.
+  Future<bool> createTemplate({
+    required String? year,
+    required DateTime date,
+    required String? subject,
+    required String? sessionTime,
+    required String labIncharge,
+  }) async {
+    _setLoading(true);
+    _errorMessage = null;
+    try {
+      final sessionData = <String, dynamic>{
+        'date': date.toIso8601String(),
+        if (labIncharge.isNotEmpty) 'labIncharge': labIncharge,
+        if (sessionTime != null && sessionTime.isNotEmpty) 'sessionTime': sessionTime,
+        if (subject != null && subject.isNotEmpty) 'subject': subject,
+        if (year != null && year.isNotEmpty) 'year': year,
+      };
+      await _sessionRepository.createSession(sessionData);
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  /// Faculty joins a template with [roomNumber], instantiating their own
+  /// session. Mirrors [startSession]'s local-state setup exactly, since the
+  /// joined session is now this faculty's active scanning session.
+  Future<bool> joinTemplate({
+    required String templateId,
+    required String roomNumber,
+    required String professorName,
+  }) async {
+    _setLoading(true);
+    _errorMessage = null;
+
+    try {
+      final sessionModel =
+          await _sessionRepository.joinTemplate(templateId, roomNumber);
+
+      _validStudents = await _sessionRepository.getValidStudents();
+      if (_validStudents.isNotEmpty) {
+        _localRepository.saveValidStudents(_validStudents);
+      }
+
+      _sessionId = sessionModel.id;
+      _professorName = professorName;
+      _year = sessionModel.academicYearName;
+      _roomNumber = roomNumber;
+      _date = sessionModel.date;
+      _subject = sessionModel.subjectName;
+      _sessionTime = sessionModel.sessionTime;
+      _labIncharge = sessionModel.labIncharge;
+
+      _scannedStudents.clear();
+      _lastScanned = null;
+
+      _localRepository.startNewSession(
+        sessionId: sessionModel.id,
+        professorName: professorName,
+        year: _year,
+        roomNumber: roomNumber,
+        date: sessionModel.date,
+        subject: _subject,
+        sessionTime: _sessionTime,
+        labIncharge: _labIncharge ?? '',
+      );
+
       return true;
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');

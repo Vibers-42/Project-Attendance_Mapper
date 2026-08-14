@@ -13,6 +13,10 @@ class AttendanceSessionModel {
   // Resolved names from backend relations (subject.name, academicYear.name)
   final String? subjectName;
   final String? academicYearName;
+  // true for a Superadmin-created shared session definition (no room yet).
+  final bool isTemplate;
+  // Set on an employee-instantiated session; traces back to its template.
+  final String? templateSessionId;
 
   AttendanceSessionModel({
     required this.id,
@@ -28,6 +32,8 @@ class AttendanceSessionModel {
     this.attendanceCount = 0,
     this.subjectName,
     this.academicYearName,
+    this.isTemplate = false,
+    this.templateSessionId,
   });
 
   factory AttendanceSessionModel.fromJson(Map<String, dynamic> json) {
@@ -55,6 +61,8 @@ class AttendanceSessionModel {
       attendanceCount: attendanceCount,
       subjectName: (json['subject'] as Map<String, dynamic>?)?['name'] as String?,
       academicYearName: (json['academicYear'] as Map<String, dynamic>?)?['name'] as String?,
+      isTemplate: json['isTemplate'] as bool? ?? false,
+      templateSessionId: json['templateSessionId'] as String?,
     );
   }
 

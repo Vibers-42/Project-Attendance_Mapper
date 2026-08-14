@@ -18,12 +18,13 @@ import { toast } from 'sonner';
 
 // ─── Column definitions ───────────────────────────────────────────────────────
 const BASE_COLS = [
-  { key: 'sno',          label: 'S.No',           width: 55,            align: 'left'  },
+  { key: 'sno',          label: 'S.No',           width: 55,            align: 'left'   },
   { key: 'workbook',     label: 'Workbook Name',  width: 'auto' as const, align: 'left' },
-  { key: 'academicYear', label: 'Academic Year',  width: 130,           align: 'left'  },
-  { key: 'topic',        label: 'Topic',          width: 130,           align: 'left'  },
-  { key: 'date',         label: 'Date',           width: 110,           align: 'left'  },
-  { key: 'actions',      label: 'Actions',        width: 170,           align: 'right' },
+  { key: 'academicYear', label: 'Academic Year',  width: 130,           align: 'left'   },
+  { key: 'topic',        label: 'Topic',          width: 130,           align: 'left'   },
+  { key: 'date',         label: 'Date',           width: 110,           align: 'left'   },
+  { key: 'present',      label: 'Present',        width: 90,            align: 'center' },
+  { key: 'actions',      label: 'Actions',        width: 170,           align: 'right'  },
 ] as const;
 
 type ColDef = { key: string; label: string; width: number | 'auto'; align: 'left' | 'center' | 'right' };
@@ -463,6 +464,11 @@ export function WorkbookTable() {
 
                         {/* Date */}
                         <td className="px-4 text-sm text-zinc-500">{dateStr}</td>
+
+                        {/* Present */}
+                        <td className="px-4 text-center text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                          {workbook.totalRecords}
+                        </td>
 
                         {/* Actions */}
                         <td className="px-4 text-right">

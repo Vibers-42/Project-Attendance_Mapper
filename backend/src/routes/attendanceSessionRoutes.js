@@ -4,13 +4,15 @@ const sessionController = require('../controllers/AttendanceSessionController');
 const authenticate = require('../middleware/authenticate');
 const authorize = require('../middleware/authorize');
 const validateRequest = require('../middleware/validateRequest');
-const { startSessionSchema } = require('../validators/attendanceValidator');
+const { startSessionSchema, joinTemplateSchema } = require('../validators/attendanceValidator');
 
 // Apply authentication to all session routes
 router.use(authenticate);
 
 // We allow both FACULTY and SUPER_ADMIN to manage sessions.
 router.use(authorize('FACULTY', 'SUPER_ADMIN'));
+
+// ─── IMPORTANT: static paths must come BEFORE parameterised /:id ───────────
 
 // GET /api/v1/sessions
 // List paginated sessions
@@ -20,9 +22,17 @@ router.get('/', sessionController.getSessions);
 // Get currently active session for faculty
 router.get('/active', sessionController.getActiveSession);
 
+// GET /api/v1/sessions/templates
+// List Superadmin-created session templates open for Faculty to join
+router.get('/templates', sessionController.listTemplates);
+
+// POST /api/v1/sessions/templates/:id/join
+// Faculty joins a template with their own room number
+router.post('/templates/:id/join', validateRequest(joinTemplateSchema), sessionController.joinTemplate);
+
 // POST /api/v1/sessions
-// Create a new attendance session
-router.post('/', validateRequest(startSessionSchema), sessionController.create);
+// Create a new session template — SUPER_ADMIN only
+router.post('/', authorize('SUPER_ADMIN'), validateRequest(startSessionSchema), sessionController.create);
 
 // GET /api/v1/sessions/:id
 // Get a specific session

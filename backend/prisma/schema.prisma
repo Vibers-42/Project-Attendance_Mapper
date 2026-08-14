@@ -142,6 +142,16 @@ model AttendanceSession {
   subjectId String?
   subject   Subject? @relation(fields: [subjectId], references: [id])
 
+  // Superadmin-created shared session definition, created without a room.
+  // Faculty "join" a template to instantiate their own room-scoped session below.
+  isTemplate Boolean @default(false)
+
+  // Set on an employee-instantiated session to trace it back to the template
+  // it was joined from. Null for templates themselves and for legacy sessions.
+  templateSessionId String?
+  templateSession    AttendanceSession?  @relation("SessionTemplate", fields: [templateSessionId], references: [id], onDelete: SetNull)
+  instances          AttendanceSession[] @relation("SessionTemplate")
+
   records AttendanceRecord[]
 
   createdAt DateTime @default(now())
@@ -153,6 +163,8 @@ model AttendanceSession {
   @@index([topic])                      // listWorkbooks filters by topic
   @@index([academicYearId, date])       // downloadWorkbook date-range + year filter
   @@index([status])                     // WorkbookGenerationService filters by status
+  @@index([isTemplate, status])         // employee-facing "active templates" listing
+  @@index([templateSessionId])
 }
 
 model AttendanceRecord {

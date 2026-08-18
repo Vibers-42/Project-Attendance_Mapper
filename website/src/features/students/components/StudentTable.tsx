@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentService, Student } from '../api/studentService';
+import { placementStudentMasterService } from '../../placements/api/placementStudentMasterService';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -46,7 +47,7 @@ function TableColGroup() {
 }
 
 // ─── Virtual scroll hook ──────────────────────────────────────────────────────
-function useVirtualScroll(items: Student[]) {
+function useVirtualScroll(items: any[]) {
   const ref = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
@@ -82,6 +83,7 @@ function useVirtualScroll(items: Student[]) {
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
+  if (!status) return null;
   return status === 'ACTIVE' ? (
     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
       ACTIVE
@@ -94,16 +96,13 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ─── Dynamic year options based on roll number prefix ─────────────────────────
-// Roll numbers start with a 2-digit admission year (e.g., 24B11AI005 → admitted 2024).
-// We compute the "year of study" relative to the current academic year.
 function buildYearOptions(): { label: string; batch: string }[] {
   const now = new Date();
-  // Indian academic year starts ~June. If before June, we're still in the prev year.
   const academicStartYear = now.getMonth() >= 5 ? now.getFullYear() : now.getFullYear() - 1;
   const options: { label: string; batch: string }[] = [{ label: 'All', batch: '' }];
   for (let yr = 2; yr <= 3; yr++) {
     const admissionYear = academicStartYear - yr + 1;
-    const prefix = String(admissionYear).slice(-2); // e.g. 2025 → "25"
+    const prefix = String(admissionYear).slice(-2);
     options.push({ label: `${yr}${yr === 1 ? 'st' : yr === 2 ? 'nd' : yr === 3 ? 'rd' : 'th'} Year`, batch: prefix });
   }
   return options;
@@ -111,16 +110,20 @@ function buildYearOptions(): { label: string; batch: string }[] {
 const YEAR_OPTIONS = buildYearOptions();
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export function StudentTable() {
+export function StudentTable({ moduleType = 'attendance' }: { moduleType?: 'attendance' | 'placement' }) {
   const [page, setPage]               = useState(1);
   const [search, setSearch]           = useState('');
   const [yearFilter, setYearFilter]   = useState('');
   const [jumpValue, setJumpValue]     = useState('');
   const [addOpen, setAddOpen]         = useState(false);
-  const [delTarget, setDelTarget]     = useState<Student | null>(null);
+  const [delTarget, setDelTarget]     = useState<any | null>(null);
   const [bulkDelOpen, setBulkDelOpen] = useState(false);
   const [debouncedSearch]             = useDebounce(search, 250);
   const queryClient = useQueryClient();
+
+  const isPlacement = moduleType === 'placement';
+  const queryKey = isPlacement ? 'placement-students' : 'students';
+  const serviceToUse = isPlacement ? placementStudentMasterService : studentService;
 
   const clearSearch = useCallback(() => { setSearch(''); setPage(1); setJumpValue(''); }, []);
   const onSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,18 +131,25 @@ export function StudentTable() {
   }, []);
   const onYearChange = useCallback((label: string) => { setYearFilter(label === 'All' ? '' : label); setPage(1); setJumpValue(''); }, []);
 
-  const { data, isLoading, isFetching, isError, error } = useQuery({
-    queryKey: ['students', page, debouncedSearch, yearFilter],
-    queryFn: () => studentService.getStudents(page, PAGE_SIZE, debouncedSearch, yearFilter),
-    placeholderData: (prev) => prev,
+  const { data, isLoading, isFetching, isError, error } = useQuery<any>({
+    queryKey: [queryKey, page, debouncedSearch, isPlacement ? '' : yearFilter],
+    queryFn: () => {
+      if (isPlacement) {
+        return placementStudentMasterService.getStudents(page, PAGE_SIZE, debouncedSearch);
+      }
+      return studentService.getStudents(page, PAGE_SIZE, debouncedSearch, yearFilter);
+    },
+    placeholderData: (prev: any) => prev,
     retry: 2,
   });
 
   const bulkDeleteMutation = useMutation({
-    mutationFn: () => studentService.deleteStudentsByYear(yearFilter),
-    onSuccess: (result) => {
-      // Bulk delete: flush cache fully since all pages are now invalid (year cohort removed)
-      queryClient.removeQueries({ queryKey: ['students'] });
+    mutationFn: () => {
+      if (isPlacement) return Promise.reject(new Error('Bulk delete not supported for placement data'));
+      return studentService.deleteStudentsByYear(yearFilter);
+    },
+    onSuccess: (result: any) => {
+      queryClient.removeQueries({ queryKey: [queryKey] });
       toast.success(`${result.count} student(s) deleted from ${yearFilter}.`);
       setBulkDelOpen(false);
       setPage(1);
@@ -171,8 +181,8 @@ export function StudentTable() {
 
   return (
     <>
-      <AddStudentModal isOpen={addOpen} onClose={() => setAddOpen(false)} />
-      <DeleteStudentDialog student={delTarget} onClose={() => setDelTarget(null)} />
+      <AddStudentModal isOpen={addOpen} onClose={() => setAddOpen(false)} moduleType={moduleType} />
+      <DeleteStudentDialog student={delTarget} onClose={() => setDelTarget(null)} moduleType={moduleType} />
 
       {/* Bulk delete confirmation */}
       <Dialog open={bulkDelOpen} onOpenChange={(o) => !bulkDeleteMutation.isPending && setBulkDelOpen(o)}>
@@ -210,7 +220,6 @@ export function StudentTable() {
       </Dialog>
 
       <div className="space-y-3">
-
         {/* ── Toolbar ─────────────────────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
           <div className="flex flex-col sm:flex-row gap-3 flex-1 min-w-0">
@@ -231,25 +240,27 @@ export function StudentTable() {
               )}
             </div>
 
-            {/* Year filter */}
-            <div className="flex items-center gap-2 shrink-0">
-              {YEAR_OPTIONS.map((opt) => {
-                const value = opt.label === 'All' ? '' : opt.label;
-                return (
-                  <button
-                    key={opt.label}
-                    onClick={() => onYearChange(opt.label)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                      yearFilter === value
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-zinc-50 dark:bg-zinc-950 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
+            {/* Year filter (Attendance Only) */}
+            {!isPlacement && (
+              <div className="flex items-center gap-2 shrink-0">
+                {YEAR_OPTIONS.map((opt) => {
+                  const value = opt.label === 'All' ? '' : opt.label;
+                  return (
+                    <button
+                      key={opt.label}
+                      onClick={() => onYearChange(opt.label)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                        yearFilter === value
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-zinc-50 dark:bg-zinc-950 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
@@ -263,7 +274,7 @@ export function StudentTable() {
                   : `${from}–${to} of ${total.toLocaleString()} records`}
               </span>
             )}
-            {yearFilter && total > 0 && (
+            {!isPlacement && yearFilter && total > 0 && (
               <Button
                 variant="outline"
                 onClick={() => setBulkDelOpen(true)}
@@ -282,8 +293,6 @@ export function StudentTable() {
 
         {/* ── Table ───────────────────────────────────────────────────────── */}
         <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
-
-          {/* HEADER — identical colgroup ensures alignment with body, padded by scrollbar width */}
           <div 
             className="overflow-hidden border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/80"
             style={{ paddingRight: scrollbarWidth }}
@@ -306,7 +315,6 @@ export function StudentTable() {
             </table>
           </div>
 
-          {/* Loading */}
           {isLoading && (
             <div className="flex flex-col items-center justify-center gap-3 text-zinc-500 py-20">
               <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -314,7 +322,6 @@ export function StudentTable() {
             </div>
           )}
 
-          {/* Error */}
           {!isLoading && isError && (
             <div className="flex flex-col items-center justify-center gap-3 py-16">
               <AlertCircle className="w-8 h-8 text-red-500" />
@@ -327,7 +334,6 @@ export function StudentTable() {
             </div>
           )}
 
-          {/* Empty */}
           {!isLoading && !isError && students.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-2 text-zinc-500 py-16">
               <Search className="w-8 h-8 text-zinc-300 dark:text-zinc-700" />
@@ -342,10 +348,8 @@ export function StudentTable() {
             </div>
           )}
 
-          {/* BODY — virtual scroll, same colgroup, same table-layout: fixed */}
           {!isLoading && !isError && students.length > 0 && (
             <div ref={scrollRef} className="overflow-y-auto overflow-x-auto" style={{ height: `${Math.min(totalH, CONTAINER_H)}px` }}>
-              {/* Full-height spacer keeps scrollbar proportional */}
               <div style={{ height: `${totalH}px`, position: 'relative' }}>
                 <table
                   className="w-full text-sm"
@@ -361,29 +365,21 @@ export function StudentTable() {
                           className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors"
                           style={{ height: `${ROW_HEIGHT}px` }}
                         >
-                          {/* S.No */}
-                          <td className="px-4 text-zinc-400 text-xs">
-                            {rowNum}
-                          </td>
-                          {/* Roll No */}
+                          <td className="px-4 text-zinc-400 text-xs">{rowNum}</td>
                           <td className="px-4">
                             <span className="font-mono font-semibold text-xs text-zinc-800 dark:text-zinc-100 tracking-wide">
                               {student.rollNumber}
                             </span>
                           </td>
-                          {/* Name */}
                           <td className="px-4 text-sm text-zinc-700 dark:text-zinc-300 truncate">
                             {student.name}
                           </td>
-                          {/* Timetable */}
                           <td className="px-4 text-xs text-zinc-500 dark:text-zinc-400">
                             {student.timetable ?? '—'}
                           </td>
-                          {/* Status */}
                           <td className="px-4 text-right">
-                            <StatusBadge status={student.status} />
+                            <StatusBadge status={student.status || 'ACTIVE'} />
                           </td>
-                          {/* Action */}
                           <td className="px-4 text-right">
                             <button
                               onClick={() => setDelTarget(student)}

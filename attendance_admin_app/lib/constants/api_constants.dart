@@ -18,6 +18,7 @@ class ApiConstants {
 
   static const String placementSessions = '/placement/sessions';
   static const String placementParseExcel = '/placement/parse-excel';
+  static const String placementAddMissingStudents = '/placement/sessions/add-missing-students';
   static const String placementFaculty = '/placement/faculty';
   static String placementSessionById(String id) => '/placement/sessions/$id';
   static String placementSessionStart(String id) => '/placement/sessions/$id/start';

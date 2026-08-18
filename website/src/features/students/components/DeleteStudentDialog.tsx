@@ -3,6 +3,7 @@
 import React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentService, Student } from '../api/studentService';
+import { placementStudentMasterService } from '../../placements/api/placementStudentMasterService';
 import { toast } from 'sonner';
 import { Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import {
@@ -16,18 +17,23 @@ import {
 import { Button } from '@/components/ui/button';
 
 interface Props {
-  student: Student | null;
+  student: any | null;
   onClose: () => void;
+  moduleType?: 'attendance' | 'placement';
 }
 
-export function DeleteStudentDialog({ student, onClose }: Props) {
+export function DeleteStudentDialog({ student, onClose, moduleType = 'attendance' }: Props) {
   const queryClient = useQueryClient();
 
+  const isPlacement = moduleType === 'placement';
+  const queryKey = isPlacement ? 'placement-students' : 'students';
+  const serviceToUse = isPlacement ? placementStudentMasterService : studentService;
+
   const deleteMutation = useMutation({
-    mutationFn: () => studentService.deleteStudent(student!.id),
+    mutationFn: () => serviceToUse.deleteStudent(student!.id),
     onSuccess: () => {
       // Invalidate (background refetch) instead of removeQueries (full flush + spinner)
-      queryClient.invalidateQueries({ queryKey: ['students'] });
+      queryClient.invalidateQueries({ queryKey: [queryKey] });
       toast.success(
         `Student "${student?.rollNumber}" has been removed from Master Data.`
       );

@@ -11,6 +11,7 @@ const NAV_LINKS = [
   { href: '/students',  label: 'Students'  },
   { href: '/faculty',   label: 'Faculty'   },
   { href: '/workbooks', label: 'Reports'   },
+  { href: '/placements', label: 'Placements' },
 ];
 
 export function Navbar() {

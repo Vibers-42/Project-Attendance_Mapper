@@ -7,23 +7,28 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { UploadCloud, FileType, AlertCircle } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentService } from '../api/studentService';
+import { placementStudentMasterService } from '../../placements/api/placementStudentMasterService';
 import { toast } from 'sonner';
 
 interface StudentUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
+  moduleType?: 'attendance' | 'placement';
 }
 
 const YEAR_OPTIONS = ['2nd Year', '3rd Year'] as const;
 type YearOption = typeof YEAR_OPTIONS[number];
 
-export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps) {
+export function StudentUploadModal({ isOpen, onClose, moduleType = 'attendance' }: StudentUploadModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<YearOption | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+
+  const isPlacement = moduleType === 'placement';
+  const queryKey = isPlacement ? 'placement-students' : 'students';
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -74,12 +79,15 @@ export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps)
   const uploadMutation = useMutation({
     mutationFn: () => {
       if (!file) throw new Error('No file selected');
+      if (isPlacement) {
+        return placementStudentMasterService.uploadStudents(file);
+      }
       if (!selectedYear) throw new Error('Please select a year before uploading');
       return studentService.uploadStudents(file, selectedYear);
     },
     onSuccess: (data) => {
       // Invalidate cache so the table refreshes in the background (no full-page spinner)
-      queryClient.invalidateQueries({ queryKey: ['students'] });
+      queryClient.invalidateQueries({ queryKey: [queryKey] });
       toast.success(data.message || 'Students uploaded successfully!');
       handleClose();
     },
@@ -92,55 +100,59 @@ export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps)
     }
   });
 
+  const canUpload = isPlacement ? !!file : !!file && !!selectedYear;
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Upload Student Master Data</DialogTitle>
+          <DialogTitle>Upload {isPlacement ? 'Placement' : 'Student'} Master Data</DialogTitle>
           <DialogDescription>
             Upload an Excel file (.xlsx) containing student records. 
             <span className="text-emerald-600 dark:text-emerald-400 block mt-2 font-medium">
-              New students will be added. Existing records will be kept unchanged.
+              New students will be added. Existing records will be updated if details changed.
             </span>
           </DialogDescription>
         </DialogHeader>
 
-        {/* ── Year selector (always visible) ─────────────────────────────── */}
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Which year are you uploading for? <span className="text-red-500">*</span>
-          </p>
-          <div className="flex gap-2">
-            {YEAR_OPTIONS.map((yr) => (
-              <button
-                key={yr}
-                type="button"
-                onClick={() => setSelectedYear(yr)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                  selectedYear === yr
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
-                }`}
-              >
-                {yr}
-              </button>
-            ))}
-          </div>
-          {!selectedYear && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
-              Select a year so students are correctly tagged in the database.
+        {/* ── Year selector (Attendance Only) ─────────────────────────────── */}
+        {!isPlacement && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Which year are you uploading for? <span className="text-red-500">*</span>
             </p>
-          )}
-        </div>
+            <div className="flex gap-2">
+              {YEAR_OPTIONS.map((yr) => (
+                <button
+                  key={yr}
+                  type="button"
+                  onClick={() => setSelectedYear(yr)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    selectedYear === yr
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400'
+                  }`}
+                >
+                  {yr}
+                </button>
+              ))}
+            </div>
+            {!selectedYear && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Select a year so students are correctly tagged in the database.
+              </p>
+            )}
+          </div>
+        )}
 
         {!file && (
           <div
             className={`border-2 border-dashed rounded-xl p-12 flex flex-col items-center justify-center transition-colors ${
-              selectedYear
+              canUpload || isPlacement
                 ? 'border-zinc-300 dark:border-zinc-700 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50'
                 : 'border-zinc-200 dark:border-zinc-800 opacity-50 cursor-not-allowed'
             }`}
-            onClick={() => selectedYear && fileInputRef.current?.click()}
+            onClick={() => (canUpload || isPlacement) && fileInputRef.current?.click()}
           >
             <UploadCloud className="w-12 h-12 text-zinc-400 mb-4" />
             <p className="text-zinc-600 dark:text-zinc-400 font-medium text-center">
@@ -207,11 +219,11 @@ export function StudentUploadModal({ isOpen, onClose }: StudentUploadModalProps)
           {file && (
             <Button
               onClick={() => uploadMutation.mutate()}
-              disabled={uploadMutation.isPending || !!error || !selectedYear}
+              disabled={uploadMutation.isPending || !!error || (!isPlacement && !selectedYear)}
               className="bg-blue-600 hover:bg-blue-700 text-white"
-              title={!selectedYear ? 'Select a year first' : undefined}
+              title={(!isPlacement && !selectedYear) ? 'Select a year first' : undefined}
             >
-              {uploadMutation.isPending ? 'Uploading…' : `Upload as ${selectedYear ?? '…'}`}
+              {uploadMutation.isPending ? 'Uploading…' : `Upload ${!isPlacement && selectedYear ? `as ${selectedYear}` : 'Data'}`}
             </Button>
           )}
         </DialogFooter>

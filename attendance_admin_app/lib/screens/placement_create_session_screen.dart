@@ -111,7 +111,72 @@ class _PlacementCreateSessionScreenState
         ),
       );
       provider.clearError();
+    } else if (provider.missingStudents.isNotEmpty) {
+      _showMissingStudentsDialog(provider);
     }
+  }
+
+  void _showMissingStudentsDialog(PlacementProvider provider) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Missing Students'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Some eligible students are not present in the Placement Student Master Data. They must be added before you can proceed.',
+                  style: TextStyle(color: Colors.red),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: provider.missingStudents.length,
+                    itemBuilder: (context, index) {
+                      final s = provider.missingStudents[index];
+                      return ListTile(
+                        dense: true,
+                        title: Text('${s.rollNumber} - ${s.name}'),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                provider.clearStudents(); // clear everything so they can't proceed
+                Navigator.of(ctx).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final success = await provider.addMissingStudents();
+                if (success && mounted) {
+                  Navigator.of(ctx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Missing students added to Master Data.'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Add to Student Master Data'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // ── Session creation / update ──────────────────────────────────────────────
@@ -133,6 +198,19 @@ class _PlacementCreateSessionScreenState
           behavior: SnackBarBehavior.floating,
         ),
       );
+      return;
+    }
+
+    if (provider.missingStudents.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'You must resolve all missing students in the eligibility list before proceeding.'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      _showMissingStudentsDialog(provider);
       return;
     }
 

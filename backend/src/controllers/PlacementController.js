@@ -37,10 +37,43 @@ class PlacementController {
 
   async parseExcel(req, res) {
     if (!req.file) throw new BadRequestError('No Excel file uploaded.');
-    const students = parsePlacementExcel(req.file.buffer);
+    const parsedStudents = parsePlacementExcel(req.file.buffer);
+    
+    // Cross-reference with PlacementStudentMaster
+    const rollNumbers = parsedStudents.map(s => s.rollNumber);
+    const existingMasterRecords = await require('../repositories/PlacementStudentMasterRepository').findManyByRollNumbers(rollNumbers);
+    const existingRolls = new Set(existingMasterRecords.map(r => r.rollNumber.toUpperCase()));
+
+    const students = [];
+    const missingStudents = [];
+
+    for (const student of parsedStudents) {
+      if (existingRolls.has(student.rollNumber.toUpperCase())) {
+        students.push(student);
+      } else {
+        missingStudents.push(student);
+      }
+    }
+
     return sendSuccess(res, {
-      data: { students, count: students.length },
-      message: `${students.length} eligible student(s) parsed from Excel.`,
+      data: { students, missingStudents, count: students.length, missingCount: missingStudents.length },
+      message: `${students.length} eligible student(s) parsed and verified. ${missingStudents.length} missing.`,
+    });
+  }
+
+  async addMissingStudents(req, res) {
+    const { students = [] } = req.body;
+    if (!Array.isArray(students) || students.length === 0) {
+      throw new BadRequestError('An array of students is required.');
+    }
+
+    const repo = require('../repositories/PlacementStudentMasterRepository');
+    const result = await repo.upsertStudents(students);
+
+    return sendSuccess(res, {
+      data: result,
+      message: `Successfully added/updated ${result.count + result.updateCount} missing students.`,
+      statusCode: 201,
     });
   }
 

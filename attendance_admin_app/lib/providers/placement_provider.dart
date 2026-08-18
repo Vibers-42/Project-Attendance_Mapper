@@ -172,28 +172,58 @@ class PlacementProvider with ChangeNotifier {
     }
   }
 
-  // ── Excel parsing ─────────────────────────────────────────────────────────
+  List<PlacementStudentModel> _missingStudents = [];
+
+  List<PlacementStudentModel> get missingStudents => List.unmodifiable(_missingStudents);
 
   Future<void> parseExcel(String filePath) async {
     _isParsingExcel = true;
     _errorMessage = null;
     notifyListeners();
     try {
-      _parsedStudents = await _repository.parseExcel(filePath);
+      final result = await _repository.parseExcel(filePath);
+      _parsedStudents = result.students;
+      _missingStudents = result.missingStudents;
     } on ApiException catch (e) {
       _errorMessage = e.message;
       _parsedStudents = [];
+      _missingStudents = [];
     } catch (e) {
       _errorMessage = 'Failed to parse Excel file.';
       _parsedStudents = [];
+      _missingStudents = [];
     } finally {
       _isParsingExcel = false;
       notifyListeners();
     }
   }
 
+  Future<bool> addMissingStudents() async {
+    if (_missingStudents.isEmpty) return true;
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      await _repository.addMissingStudents(_missingStudents);
+      // Since they are now added, we can move them to parsedStudents
+      _parsedStudents.addAll(_missingStudents);
+      _missingStudents = [];
+      return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      return false;
+    } catch (e) {
+      _errorMessage = 'Failed to add missing students.';
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   void clearStudents() {
     _parsedStudents = [];
+    _missingStudents = [];
     notifyListeners();
   }
 

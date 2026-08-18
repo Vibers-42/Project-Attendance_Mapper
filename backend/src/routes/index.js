@@ -13,6 +13,8 @@ const adminWorkbookRoutes = require('./adminWorkbookRoutes');
 const adminSessionRoutes = require('./adminSessionRoutes');
 const adminStatsController = require('../controllers/AdminStatsController');
 const placementRoutes = require('./placementRoutes');
+const placementStudentMasterRoutes = require('./placementStudentMasterRoutes');
+const adminPlacementReportRoutes = require('./adminPlacementReportRoutes');
 
 const { sendSuccess } = require('../utils/apiResponse');
 const authenticate = require('../middleware/authenticate');
@@ -30,6 +32,8 @@ router.get('/health', (req, res) => {
 router.use('/auth', authRoutes);
 router.use('/admin/auth', adminAuthRoutes);
 router.use('/admin/students', authenticate, authorize('SUPER_ADMIN'), adminStudentRoutes);
+router.use('/admin/placements/students', authenticate, authorize('SUPER_ADMIN'), placementStudentMasterRoutes);
+router.use('/admin/placements/reports', authenticate, authorize('SUPER_ADMIN'), adminPlacementReportRoutes);
 router.use('/admin/faculty', authenticate, authorize('SUPER_ADMIN'), adminFacultyRoutes);
 router.use('/admin/workbooks', authenticate, authorize('SUPER_ADMIN'), adminWorkbookRoutes);
 router.use('/admin/sessions', authenticate, authorize('SUPER_ADMIN'), adminSessionRoutes);

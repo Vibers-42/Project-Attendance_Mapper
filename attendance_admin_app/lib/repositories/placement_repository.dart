@@ -58,7 +58,13 @@ class PlacementRepository {
     }
   }
 
-  Future<List<PlacementStudentModel>> parseExcel(String filePath) async {
+class PlacementParseResult {
+  final List<PlacementStudentModel> students;
+  final List<PlacementStudentModel> missingStudents;
+  PlacementParseResult(this.students, this.missingStudents);
+}
+
+  Future<PlacementParseResult> parseExcel(String filePath) async {
     try {
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(filePath),
@@ -70,13 +76,36 @@ class PlacementRepository {
       );
       final authResponse = AuthResponseModel.fromJson(response.data);
       if (authResponse.success && authResponse.dataAsMap != null) {
-        final list = authResponse.dataAsMap!['students'] as List<dynamic>;
-        return list
-            .map((e) =>
-                PlacementStudentModel.fromJson(e as Map<String, dynamic>))
-            .toList();
+        final data = authResponse.dataAsMap!;
+        final list = data['students'] as List<dynamic>;
+        final missingList = data['missingStudents'] != null ? data['missingStudents'] as List<dynamic> : [];
+        
+        final students = list.map((e) => PlacementStudentModel.fromJson(e as Map<String, dynamic>)).toList();
+        final missingStudents = missingList.map((e) => PlacementStudentModel.fromJson(e as Map<String, dynamic>)).toList();
+        
+        return PlacementParseResult(students, missingStudents);
       }
       throw ApiException(authResponse.message);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString());
+    }
+  }
+
+  Future<void> addMissingStudents(List<PlacementStudentModel> students) async {
+    try {
+      final response = await _apiService.client.post(
+        ApiConstants.placementAddMissingStudents,
+        data: {
+          'students': students.map((s) => s.toJson()).toList(),
+        },
+      );
+      final authResponse = AuthResponseModel.fromJson(response.data);
+      if (!authResponse.success) {
+        throw ApiException(authResponse.message);
+      }
     } on DioException catch (e) {
       throw ApiException.fromDioException(e);
     } catch (e) {

@@ -352,3 +352,19 @@ model PlacementSessionPermission {
   @@index([sessionId])              // fetch all permissions for a session
   @@index([facultyId])              // fetch all sessions accessible to a faculty member
 }
+
+/// Master data pool for eligible 4th-year placement students.
+/// Kept completely separate from the attendance Student table.
+model PlacementStudentMaster {
+  id         String @id @default(uuid())
+  serialNo   Int?
+  rollNumber String @unique
+  name       String
+  timetable  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([rollNumber])
+}
+

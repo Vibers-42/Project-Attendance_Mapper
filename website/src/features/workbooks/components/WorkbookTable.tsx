@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { sessionReportService, WorkbookRecord, WorkbookFilters } from '../api/workbookService';
+import { placementReportService, PlacementReportRecord, PlacementReportFilters } from '../../placements/api/placementReportService';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,6 +17,10 @@ import {
 import { useDebounce } from 'use-debounce';
 import { toast } from 'sonner';
 
+interface WorkbookTableProps {
+  moduleType?: 'attendance' | 'placement';
+}
+
 // ─── Column definitions ───────────────────────────────────────────────────────
 const BASE_COLS = [
   { key: 'sno',          label: 'S.No',           width: 55,            align: 'left'   },
@@ -25,6 +30,17 @@ const BASE_COLS = [
   { key: 'date',         label: 'Date',           width: 110,           align: 'left'   },
   { key: 'present',      label: 'Present',        width: 90,            align: 'center' },
   { key: 'actions',      label: 'Actions',        width: 170,           align: 'right'  },
+] as const;
+
+const PLACEMENT_COLS = [
+  { key: 'sno',          label: 'S.No',           width: 55,            align: 'left'   },
+  { key: 'workbook',     label: 'Placement Name', width: 'auto' as const, align: 'left' },
+  { key: 'date',         label: 'Date',           width: 110,           align: 'left'   },
+  { key: 'time',         label: 'Time',           width: 80,            align: 'left'   },
+  { key: 'mode',         label: 'Mode',           width: 100,           align: 'left'   },
+  { key: 'status',       label: 'Status',         width: 110,           align: 'center' },
+  { key: 'present',      label: 'Present',        width: 80,            align: 'center' },
+  { key: 'actions',      label: 'Actions',        width: 120,           align: 'right'  },
 ] as const;
 
 type ColDef = { key: string; label: string; width: number | 'auto'; align: 'left' | 'center' | 'right' };
@@ -45,7 +61,7 @@ function TableColGroup({ cols }: { cols: readonly ColDef[] }) {
 }
 
 // ─── Virtual scroll hook ──────────────────────────────────────────────────────
-function useVirtualScroll(items: WorkbookRecord[]) {
+function useVirtualScroll(items: any[]) {
   const ref = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop]       = useState(0);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
@@ -126,10 +142,10 @@ function NoRecordsModal({ open, onClose }: { open: boolean; onClose: () => void 
             <AlertCircle className="w-5 h-5" />
             No Attendance Records
           </DialogTitle>
-          <DialogDescription>Download is not available for this class yet.</DialogDescription>
+          <DialogDescription>Download is not available for this session yet.</DialogDescription>
         </DialogHeader>
         <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-5 py-4 text-sm text-amber-700 dark:text-amber-300 space-y-2">
-          <p className="font-semibold">No attendance records have been submitted for any session in this class.</p>
+          <p className="font-semibold">No attendance records have been submitted.</p>
           <p className="text-amber-600 dark:text-amber-400 text-xs">
             Download will be available once the faculty has recorded attendance through the app.
           </p>
@@ -147,7 +163,7 @@ const YEAR_OPTIONS  = ['2nd Year', '3rd Year'] as const;
 const TOPIC_OPTIONS = ['All', 'Aptitude', 'Soft Skills'] as const;
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export function WorkbookTable() {
+export function WorkbookTable({ moduleType = 'attendance' }: WorkbookTableProps) {
   const queryClient = useQueryClient();
   const [page, setPage]           = useState(1);
   const [search, setSearch]       = useState('');
@@ -157,6 +173,10 @@ export function WorkbookTable() {
   const [noRecordsOpen, setNoRecordsOpen]         = useState(false);
   const [downloadingId, setDownloadingId]         = useState<string | null>(null);
   const [deleteWorkbookTarget, setDeleteWorkbookTarget] = useState<WorkbookRecord | null>(null);
+
+  const isPlacement = moduleType === 'placement';
+  const queryKey = isPlacement ? 'admin-placement-reports' : 'admin-workbooks';
+  const COLS = isPlacement ? PLACEMENT_COLS : BASE_COLS;
 
   const deleteWorkbookMutation = useMutation({
     mutationFn: (wb: WorkbookRecord) => sessionReportService.deleteWorkbook(wb),
@@ -188,13 +208,20 @@ export function WorkbookTable() {
 
   const queryFilters = { ...filters, search: debouncedSearch, page, limit: PAGE_SIZE };
 
-  const { data, isLoading, isFetching, isError, error } = useQuery({
-    queryKey: ['admin-workbooks', queryFilters],
-    queryFn:  () => sessionReportService.listSessions(queryFilters),
-    placeholderData: (prev) => prev,
-    // staleTime: 0 — always treat cached data as stale so React Query re-fetches
-    // on every mount (tab switch) and window focus, keeping the list perfectly
-    // in sync after session deletions or new sessions from the app.
+  const { data, isLoading, isFetching, isError, error } = useQuery<any>({
+    queryKey: [queryKey, queryFilters],
+    queryFn:  () => {
+      if (isPlacement) {
+        return placementReportService.listReports({
+          page: queryFilters.page,
+          limit: queryFilters.limit,
+          search: queryFilters.search,
+          date: queryFilters.date,
+        });
+      }
+      return sessionReportService.listSessions(queryFilters);
+    },
+    placeholderData: (prev: any) => prev,
     staleTime:          0,
     refetchOnMount:     'always',
     refetchOnWindowFocus: true,
@@ -211,22 +238,27 @@ export function WorkbookTable() {
   const hasActiveFilters = !!(debouncedSearch || filters.academicYear || filters.topic || filters.date);
 
   // ── Download handler ────────────────────────────────────────────────────────
-  const handleDownload = async (workbook: WorkbookRecord) => {
-    if (workbook.totalRecords === 0) {
+  const handleDownload = async (workbook: any) => {
+    const presentCount = isPlacement ? workbook.presentCount : workbook.totalRecords;
+    if (presentCount === 0) {
       setNoRecordsOpen(true);
       return;
     }
 
     setDownloadingId(workbook.id);
     try {
-      await sessionReportService.downloadSession(workbook);
-      toast.success('Workbook downloaded successfully.');
+      if (isPlacement) {
+        await placementReportService.downloadReport(workbook.id);
+      } else {
+        await sessionReportService.downloadSession(workbook as WorkbookRecord);
+      }
+      toast.success(isPlacement ? 'Placement Report downloaded successfully.' : 'Workbook downloaded successfully.');
     } catch (err: any) {
       const status = err?.response?.status;
       if (status === 400 || status === 404) {
         setNoRecordsOpen(true);
       } else {
-        const msg = err?.response?.data?.message || err.message || 'Failed to download workbook.';
+        const msg = err?.response?.data?.message || err.message || 'Failed to download report.';
         toast.error('Download failed', { description: msg });
       }
     } finally {
@@ -249,55 +281,62 @@ export function WorkbookTable() {
   return (
     <div className="space-y-3">
       <NoRecordsModal open={noRecordsOpen} onClose={() => setNoRecordsOpen(false)} />
-      <DeleteWorkbookDialog
-        workbook={deleteWorkbookTarget}
-        onClose={() => setDeleteWorkbookTarget(null)}
-        onConfirm={() => deleteWorkbookMutation.mutate(deleteWorkbookTarget!)}
-        isPending={deleteWorkbookMutation.isPending}
-      />
+      {!isPlacement && (
+        <DeleteWorkbookDialog
+          workbook={deleteWorkbookTarget}
+          onClose={() => setDeleteWorkbookTarget(null)}
+          onConfirm={() => deleteWorkbookMutation.mutate(deleteWorkbookTarget!)}
+          isPending={deleteWorkbookMutation.isPending}
+        />
+      )}
 
       {/* ── Toolbar ────────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
 
         {/* Filters Row */}
         <div className="flex flex-wrap gap-4 items-end">
-          {/* Academic Year */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Academic Year</label>
-            <div className="flex gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-950 rounded-lg">
-              <button
-                onClick={() => handleFilterChange({ academicYear: undefined })}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${!filters.academicYear ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
-              >
-                All
-              </button>
-              {YEAR_OPTIONS.map((year) => (
-                <button
-                  key={year}
-                  onClick={() => handleFilterChange({ academicYear: year })}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${filters.academicYear === year ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
-                >
-                  {year}
-                </button>
-              ))}
-            </div>
-          </div>
+          
+          {!isPlacement && (
+            <>
+              {/* Academic Year */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Academic Year</label>
+                <div className="flex gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-950 rounded-lg">
+                  <button
+                    onClick={() => handleFilterChange({ academicYear: undefined })}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${!filters.academicYear ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                  >
+                    All
+                  </button>
+                  {YEAR_OPTIONS.map((year) => (
+                    <button
+                      key={year}
+                      onClick={() => handleFilterChange({ academicYear: year })}
+                      className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${filters.academicYear === year ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                    >
+                      {year}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          {/* Topic */}
-          <div className="space-y-1.5 min-w-[180px]">
-            <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Topic</label>
-            <Select
-              value={String(filters.topic || 'All')}
-              onValueChange={(val: string | null | undefined) => handleFilterChange({ topic: (!val || val === 'All') ? undefined : val })}
-            >
-              <SelectTrigger className="bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 h-9">
-                <SelectValue placeholder="All Topics" />
-              </SelectTrigger>
-              <SelectContent>
-                {TOPIC_OPTIONS.map((t) => <SelectItem key={t} value={t}>{t === 'All' ? 'All Topics' : t}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+              {/* Topic */}
+              <div className="space-y-1.5 min-w-[180px]">
+                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Topic</label>
+                <Select
+                  value={String(filters.topic || 'All')}
+                  onValueChange={(val: string | null | undefined) => handleFilterChange({ topic: (!val || val === 'All') ? undefined : val })}
+                >
+                  <SelectTrigger className="bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 h-9">
+                    <SelectValue placeholder="All Topics" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TOPIC_OPTIONS.map((t) => <SelectItem key={t} value={t}>{t === 'All' ? 'All Topics' : t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
 
           {/* Date */}
           <div className="space-y-1.5">
@@ -342,7 +381,7 @@ export function WorkbookTable() {
           <div className="relative flex-1 min-w-0 max-w-[460px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
             <Input
-              placeholder='Search by Workbook Name (e.g. ES-Aptitude(2nd Year,18-07-2026))...'
+              placeholder={isPlacement ? 'Search by Placement Name (e.g. TCS Campus Drive)...' : 'Search by Workbook Name (e.g. ES-Aptitude(2nd Year,18-07-2026))...'}
               value={search}
               onChange={onSearchChange}
               className="pl-9 pr-9 bg-zinc-50 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 focus-visible:ring-blue-500 w-full"
@@ -359,10 +398,10 @@ export function WorkbookTable() {
             {!isLoading && !isError && (
               <span className="text-sm text-zinc-500 font-medium whitespace-nowrap">
                 {workbooks.length === 0
-                  ? 'No workbooks'
+                  ? (isPlacement ? 'No reports' : 'No workbooks')
                   : hasActiveFilters
                   ? `${total.toLocaleString()} match${total !== 1 ? 'es' : ''}`
-                  : `${from}–${to} of ${total.toLocaleString()} workbook${total !== 1 ? 's' : ''}`}
+                  : `${from}–${to} of ${total.toLocaleString()} ${isPlacement ? 'report' : 'workbook'}${total !== 1 ? 's' : ''}`}
               </span>
             )}
           </div>
@@ -375,10 +414,10 @@ export function WorkbookTable() {
         {/* HEADER */}
         <div className="overflow-hidden border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/80" style={{ paddingRight: scrollbarWidth }}>
           <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
-            <TableColGroup cols={BASE_COLS} />
+            <TableColGroup cols={COLS} />
             <thead>
               <tr>
-                {BASE_COLS.map((c) => (
+                {COLS.map((c) => (
                   <th key={c.key} className="py-3 px-4 font-semibold text-zinc-600 dark:text-zinc-400" style={{ textAlign: c.align as any }}>
                     {c.label}
                   </th>
@@ -392,7 +431,7 @@ export function WorkbookTable() {
         {isLoading && (
           <div className="flex flex-col items-center justify-center gap-3 text-zinc-500 py-20">
             <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-            <span className="text-sm font-medium">Loading attendance reports…</span>
+            <span className="text-sm font-medium">Loading {isPlacement ? 'placement reports' : 'attendance reports'}…</span>
           </div>
         )}
 
@@ -401,7 +440,7 @@ export function WorkbookTable() {
           <div className="flex flex-col items-center justify-center gap-3 py-16">
             <AlertCircle className="w-8 h-8 text-red-500" />
             <div className="text-center">
-              <p className="font-semibold text-red-500">Failed to load attendance reports</p>
+              <p className="font-semibold text-red-500">Failed to load {isPlacement ? 'placement reports' : 'attendance reports'}</p>
               <p className="text-sm text-zinc-400 mt-1">{(error as any)?.response?.data?.message || 'Server error — please try refreshing.'}</p>
             </div>
           </div>
@@ -411,7 +450,7 @@ export function WorkbookTable() {
         {!isLoading && !isError && workbooks.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 text-zinc-500 py-16">
             <CalendarCheck className="w-8 h-8 text-zinc-300 dark:text-zinc-700" />
-            <p className="font-medium">{debouncedSearch || hasActiveFilters ? 'No workbooks match your filters' : 'No attendance reports found.'}</p>
+            <p className="font-medium">{debouncedSearch || hasActiveFilters ? `No ${isPlacement ? 'reports' : 'workbooks'} match your filters` : `No ${isPlacement ? 'placement reports' : 'attendance reports'} found.`}</p>
             {(debouncedSearch || hasActiveFilters) && (
               <p className="text-sm">Try adjusting or clearing the filters above.</p>
             )}
@@ -423,7 +462,7 @@ export function WorkbookTable() {
           <div ref={scrollRef} className="overflow-y-auto overflow-x-auto" style={{ height: `${Math.min(totalH, CONTAINER_H)}px` }}>
             <div style={{ height: `${totalH}px`, position: 'relative' }}>
               <table className="w-full text-sm" style={{ tableLayout: 'fixed', position: 'absolute', top: `${offsetTop}px`, left: 0, right: 0 }}>
-                <TableColGroup cols={BASE_COLS} />
+                <TableColGroup cols={COLS} />
                 <tbody>
                   {visible.map((workbook, i) => {
                     const rowNum = (page - 1) * PAGE_SIZE + (start + i) + 1;
@@ -431,6 +470,8 @@ export function WorkbookTable() {
                     const d      = new Date(workbook.date);
                     const dateStr = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
                     const isDownloading = downloadingId === workbook.id;
+                    const title = isPlacement ? workbook.title : workbook.workbookName;
+                    const presentCount = isPlacement ? workbook.presentCount : workbook.totalRecords;
 
                     return (
                       <tr
@@ -441,33 +482,60 @@ export function WorkbookTable() {
                         {/* S.No */}
                         <td className="px-4 text-zinc-400 text-xs">{rowNum}</td>
 
-                        {/* Workbook Name */}
-                        <td className="px-4 text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate" title={workbook.workbookName}>
+                        {/* Workbook Name / Placement Name */}
+                        <td className="px-4 text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate" title={title}>
                           <div className="flex items-center gap-2">
                             <BookOpen className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                            <span className="truncate">{workbook.workbookName}</span>
-                            {workbook.totalRecords > 0 && workbook.roomCount > 1 && (
+                            <span className="truncate">{title}</span>
+                            {!isPlacement && workbook.totalRecords > 0 && workbook.roomCount > 1 && (
                               <span className="shrink-0 text-xs text-zinc-400 font-normal">({workbook.roomCount} rooms)</span>
                             )}
                           </div>
                         </td>
 
-                        {/* Academic Year */}
-                        <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400 truncate">
-                          {workbook.academicYear?.name ?? '—'}
-                        </td>
+                        {/* Academic Year (Attendance Only) */}
+                        {!isPlacement && (
+                          <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400 truncate">
+                            {workbook.academicYear?.name ?? '—'}
+                          </td>
+                        )}
 
-                        {/* Topic */}
-                        <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400 truncate">
-                          {workbook.topic ?? '—'}
-                        </td>
+                        {/* Topic (Attendance Only) */}
+                        {!isPlacement && (
+                          <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400 truncate">
+                            {workbook.topic ?? '—'}
+                          </td>
+                        )}
 
                         {/* Date */}
                         <td className="px-4 text-sm text-zinc-500">{dateStr}</td>
 
+                        {/* Placement Specific Columns */}
+                        {isPlacement && (
+                          <>
+                            <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400">
+                              {new Date(workbook.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${workbook.mode === 'Virtual' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300' : 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300'}`}>
+                                {workbook.mode}
+                              </span>
+                            </td>
+                            <td className="px-4 text-center">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                                workbook.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' : 
+                                workbook.status === 'ACTIVE' ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20' : 
+                                'bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700'
+                              }`}>
+                                {workbook.status}
+                              </span>
+                            </td>
+                          </>
+                        )}
+
                         {/* Present */}
                         <td className="px-4 text-center text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                          {workbook.totalRecords}
+                          {presentCount}
                         </td>
 
                         {/* Actions */}
@@ -476,18 +544,21 @@ export function WorkbookTable() {
                             <button
                               onClick={() => handleDownload(workbook)}
                               disabled={isDownloading}
-                              title="Download consolidated workbook"
+                              title={isPlacement ? "Download placement report" : "Download consolidated workbook"}
                               className="inline-flex items-center justify-center w-9 h-9 rounded-[12px] border-[1.5px] border-blue-200 dark:border-blue-900 text-blue-500 bg-white dark:bg-zinc-900 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors disabled:opacity-50"
                             >
                               {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                             </button>
-                            <button
-                              onClick={() => setDeleteWorkbookTarget(workbook)}
-                              title="Delete all sessions in this class"
-                              className="inline-flex items-center justify-center w-9 h-9 rounded-[12px] border-[1.5px] border-zinc-200 dark:border-zinc-800 text-red-500 bg-white dark:bg-zinc-900 hover:bg-red-50 dark:hover:bg-red-900/20 hover:border-red-200 dark:hover:border-red-900 hover:text-red-600 transition-colors"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            
+                            {!isPlacement && (
+                              <button
+                                onClick={() => setDeleteWorkbookTarget(workbook)}
+                                title="Delete all sessions in this class"
+                                className="inline-flex items-center justify-center w-9 h-9 rounded-[12px] border-[1.5px] border-zinc-200 dark:border-zinc-800 text-red-500 bg-white dark:bg-zinc-900 hover:bg-red-50 dark:hover:bg-red-900/20 hover:border-red-200 dark:hover:border-red-900 hover:text-red-600 transition-colors"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

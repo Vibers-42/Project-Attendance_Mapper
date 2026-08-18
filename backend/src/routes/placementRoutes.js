@@ -14,6 +14,9 @@ router.get('/faculty', placementController.getFaculty.bind(placementController))
 // POST /api/v1/placement/parse-excel — upload an Excel file and return parsed students
 router.post('/parse-excel', upload.single('file'), placementController.parseExcel.bind(placementController));
 
+// POST /api/v1/placement/sessions/add-missing-students — add missing students to session
+router.post('/sessions/add-missing-students', placementController.addMissingStudents.bind(placementController));
+
 // GET /api/v1/placement/sessions — list sessions accessible to the requesting faculty
 router.get('/sessions', placementController.getSessions.bind(placementController));
 

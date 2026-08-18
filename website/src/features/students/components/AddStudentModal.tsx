@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentService } from '../api/studentService';
+import { placementStudentMasterService } from '../../placements/api/placementStudentMasterService';
 import { toast } from 'sonner';
 import { Loader2, UserPlus, AlertCircle, CheckCircle2 } from 'lucide-react';
 import {
@@ -20,6 +21,7 @@ import { Label } from '@/components/ui/label';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  moduleType?: 'attendance' | 'placement';
 }
 
 interface FormState {
@@ -30,22 +32,26 @@ interface FormState {
 
 const INITIAL: FormState = { rollNumber: '', name: '', timetable: '' };
 
-export function AddStudentModal({ isOpen, onClose }: Props) {
+export function AddStudentModal({ isOpen, onClose, moduleType = 'attendance' }: Props) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>(INITIAL);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isPlacement = moduleType === 'placement';
+  const queryKey = isPlacement ? 'placement-students' : 'students';
+  const serviceToUse = isPlacement ? placementStudentMasterService : studentService;
+
   const addMutation = useMutation({
     mutationFn: () =>
-      studentService.addStudent({
+      serviceToUse.addStudent({
         rollNumber: form.rollNumber.trim().toUpperCase(),
         name: form.name.trim(),
         timetable: form.timetable.trim(),
       }),
-    onSuccess: (student) => {
-      queryClient.invalidateQueries({ queryKey: ['students'] });
-      toast.success(`Student "${student.rollNumber}" added to Master Data.`);
+    onSuccess: (student: any) => {
+      queryClient.invalidateQueries({ queryKey: [queryKey] });
+      toast.success(`Student "${form.rollNumber.trim().toUpperCase()}" added to Master Data.`);
       handleClose();
     },
     onError: (err: any) => {

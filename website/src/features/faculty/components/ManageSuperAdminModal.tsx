@@ -36,7 +36,7 @@ interface RowProps {
 function FacultyRow({ faculty, selected, onToggle }: RowProps) {
   return (
     <label
-      className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-all border ${
+      className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors border ${
         selected
           ? 'bg-violet-50 border-violet-300 dark:bg-violet-900/20 dark:border-violet-600'
           : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50'
@@ -277,7 +277,7 @@ export function ManageSuperAdminModal({ isOpen, onClose }: Props) {
             <div className="flex gap-1 mt-4 p-1 bg-zinc-100 dark:bg-zinc-950 rounded-lg w-fit">
               <button
                 onClick={() => switchTab('grant')}
-                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md transition-[color,background-color,box-shadow] ${
                   tab === 'grant'
                     ? 'bg-white dark:bg-zinc-800 text-violet-700 dark:text-violet-300 shadow-sm'
                     : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
@@ -293,7 +293,7 @@ export function ManageSuperAdminModal({ isOpen, onClose }: Props) {
               </button>
               <button
                 onClick={() => switchTab('revoke')}
-                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md transition-[color,background-color,box-shadow] ${
                   tab === 'revoke'
                     ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-sm'
                     : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'

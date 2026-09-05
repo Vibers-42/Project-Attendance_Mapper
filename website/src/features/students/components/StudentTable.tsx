@@ -23,7 +23,6 @@ const COLS = [
   { key: 'roll',   label: 'Roll No',       width: 148,  align: 'left'  },
   { key: 'name',   label: 'Student Name',  width: 'auto' as const, align: 'left'  },
   { key: 'tt',     label: 'Timetable',     width: 130,  align: 'left'  },
-  { key: 'room',   label: 'Room Number',   width: 130,  align: 'left'  },
   { key: 'status', label: 'Status',        width: 90,   align: 'right' },
   { key: 'action', label: 'Action',        width: 68,   align: 'right' },
 ] as const;
@@ -52,16 +51,27 @@ function useVirtualScroll(items: any[]) {
   const ref = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
+  const rafId = useRef<number | null>(null);
 
+  // Batched to at most one state update per animation frame — an unthrottled
+  // scroll handler fires 60-100+ times/sec during a fling and would force a
+  // full re-render (recomputing visible rows) on every single one of them.
   const onScroll = useCallback(() => {
-    if (ref.current) setScrollTop(ref.current.scrollTop);
+    if (rafId.current !== null) return;
+    rafId.current = requestAnimationFrame(() => {
+      rafId.current = null;
+      if (ref.current) setScrollTop(ref.current.scrollTop);
+    });
   }, []);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+    };
   }, [onScroll]);
 
   // Reset scroll on items change, and measure scrollbar width
@@ -377,10 +387,6 @@ export function StudentTable({ moduleType = 'attendance' }: { moduleType?: 'atte
                           </td>
                           <td className="px-4 text-xs text-zinc-500 dark:text-zinc-400">
                             {student.timetable ?? '—'}
-                          </td>
-                          {/* Room Number (from most recent scan) */}
-                          <td className="px-4 text-xs text-zinc-500 dark:text-zinc-400">
-                            {student.roomNumber ?? '—'}
                           </td>
                           {/* Status */}
                           <td className="px-4 text-right">

@@ -15,26 +15,31 @@ class FacultyMasterDataService {
   async getFaculty(filters = {}, page = 1, limit = 50, query = '') {
     const skip = (page - 1) * limit;
 
-    let faculty, total;
-
-    if (query && query.trim().length > 0) {
-      [faculty, total] = await Promise.all([
-        FacultyRepository.searchPaginated(query.trim(), skip, limit),
-        FacultyRepository.searchCount(query.trim()),
-      ]);
-    } else {
-      [faculty, total] = await Promise.all([
-        FacultyRepository.findAll(filters, skip, limit),
-        FacultyRepository.count(filters),
-      ]);
-    }
-
     // Unify roles: if a faculty is an original Super Admin in the SuperAdmin table,
-    // ensure their role is reported as SUPER_ADMIN to the frontend.
-    const activeSuperAdmins = await prisma.superAdmin.findMany({
+    // ensure their role is reported as SUPER_ADMIN to the frontend. This lookup is
+    // independent of the faculty/count queries below, so it runs alongside them
+    // instead of as an extra sequential round trip on every page load.
+    const superAdminsQuery = prisma.superAdmin.findMany({
       where: { isActive: true },
       select: { employeeId: true },
     });
+
+    let faculty, total, activeSuperAdmins;
+
+    if (query && query.trim().length > 0) {
+      [faculty, total, activeSuperAdmins] = await Promise.all([
+        FacultyRepository.searchPaginated(query.trim(), skip, limit),
+        FacultyRepository.searchCount(query.trim()),
+        superAdminsQuery,
+      ]);
+    } else {
+      [faculty, total, activeSuperAdmins] = await Promise.all([
+        FacultyRepository.findAll(filters, skip, limit),
+        FacultyRepository.count(filters),
+        superAdminsQuery,
+      ]);
+    }
+
     const superAdminIds = new Set(activeSuperAdmins.map((s) => s.employeeId));
 
     const unifiedFaculty = faculty.map((f) => ({

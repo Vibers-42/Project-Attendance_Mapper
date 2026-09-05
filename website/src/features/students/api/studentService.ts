@@ -8,8 +8,6 @@ export interface Student {
   barcode: string;
   timetable: string | null;
   status: string;
-  // Room from this student's most recent attendance scan; null if never scanned.
-  roomNumber: string | null;
   section?: { id: string; name: string } | null;
   department?: { id: string; name: string; code: string } | null;
   academicYear?: { id: string; name: string } | null;

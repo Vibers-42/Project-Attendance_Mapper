@@ -133,18 +133,17 @@ class PlacementRepository {
   // ── Attendance update ─────────────────────────────────────────────────────────
 
   async updateAttendance(sessionId, facultyId, rollNumbers) {
-    const session = await prisma.placementSession.findUnique({
-      where: { id: sessionId },
-      select: { status: true },
-    });
+    // Session and permission are independent lookups — run them together.
+    const [session, permission] = await Promise.all([
+      prisma.placementSession.findUnique({ where: { id: sessionId }, select: { status: true } }),
+      prisma.placementSessionPermission.findFirst({
+        where: { sessionId, facultyId, role: { in: ['OWNER', 'EDITOR'] } },
+      }),
+    ]);
     if (!session) throw new NotFoundError('Session not found.');
     if (session.status !== 'ACTIVE') {
       throw new BadRequestError('Session is not active.');
     }
-
-    const permission = await prisma.placementSessionPermission.findFirst({
-      where: { sessionId, facultyId, role: { in: ['OWNER', 'EDITOR'] } },
-    });
     if (!permission) {
       throw new ForbiddenError('You do not have permission to update attendance for this session.');
     }
@@ -163,26 +162,26 @@ class PlacementRepository {
    * Includes createdByName for the Excel workbook summary sheet.
    */
   async getSessionReport(sessionId, facultyId) {
-    const permission = await prisma.placementSessionPermission.findFirst({
-      where: { sessionId, facultyId },
-    });
+    // Permission and session are independent lookups — run them together.
+    const [permission, session] = await Promise.all([
+      prisma.placementSessionPermission.findFirst({ where: { sessionId, facultyId } }),
+      prisma.placementSession.findUnique({
+        where: { id: sessionId },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          date: true,
+          venue: true,
+          description: true,       // attendanceMode
+          conductedById: true,
+          createdBy: { select: { name: true, facultyId: true } },
+        },
+      }),
+    ]);
     if (!permission) {
       throw new ForbiddenError('You do not have permission to view this report.');
     }
-
-    const session = await prisma.placementSession.findUnique({
-      where: { id: sessionId },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        date: true,
-        venue: true,
-        description: true,       // attendanceMode
-        conductedById: true,
-        createdBy: { select: { name: true, facultyId: true } },
-      },
-    });
     if (!session) throw new NotFoundError('Session not found.');
     if (session.status !== 'COMPLETED') {
       throw new BadRequestError('Report is only available for completed sessions.');
@@ -221,18 +220,17 @@ class PlacementRepository {
 
   async finalizeSession(sessionId, facultyId, rollNumbers = []) {
     return prisma.$transaction(async (tx) => {
-      const session = await tx.placementSession.findUnique({
-        where: { id: sessionId },
-        select: { status: true },
-      });
+      // Session and permission are independent lookups — run them together.
+      const [session, permission] = await Promise.all([
+        tx.placementSession.findUnique({ where: { id: sessionId }, select: { status: true } }),
+        tx.placementSessionPermission.findFirst({
+          where: { sessionId, facultyId, role: { in: ['OWNER', 'EDITOR'] } },
+        }),
+      ]);
       if (!session) throw new NotFoundError('Session not found.');
       if (session.status !== 'ACTIVE') {
         throw new BadRequestError('Session is not active and cannot be finalized.');
       }
-
-      const permission = await tx.placementSessionPermission.findFirst({
-        where: { sessionId, facultyId, role: { in: ['OWNER', 'EDITOR'] } },
-      });
       if (!permission) {
         throw new ForbiddenError('You do not have permission to finalize this session.');
       }
@@ -272,17 +270,16 @@ class PlacementRepository {
    * Only OWNER or EDITOR may start a session.
    */
   async startSession(sessionId, facultyId) {
-    const permission = await prisma.placementSessionPermission.findFirst({
-      where: { sessionId, facultyId, role: { in: ['OWNER', 'EDITOR'] } },
-    });
+    // Permission and session are independent lookups — run them together.
+    const [permission, session] = await Promise.all([
+      prisma.placementSessionPermission.findFirst({
+        where: { sessionId, facultyId, role: { in: ['OWNER', 'EDITOR'] } },
+      }),
+      prisma.placementSession.findUnique({ where: { id: sessionId }, select: { status: true } }),
+    ]);
     if (!permission) {
       throw new ForbiddenError('You do not have permission to start this session.');
     }
-
-    const session = await prisma.placementSession.findUnique({
-      where: { id: sessionId },
-      select: { status: true },
-    });
     if (!session) throw new NotFoundError('Session not found.');
     if (session.status !== 'DRAFT') {
       throw new BadRequestError('Only draft sessions can be started.');
@@ -309,17 +306,16 @@ class PlacementRepository {
   // ── Update draft ──────────────────────────────────────────────────────────────
 
   async updateDraft(sessionId, facultyId, sessionData, students) {
-    const permission = await prisma.placementSessionPermission.findFirst({
-      where: { sessionId, facultyId, role: { in: ['OWNER', 'EDITOR'] } },
-    });
+    // Permission and session are independent lookups — run them together.
+    const [permission, existing] = await Promise.all([
+      prisma.placementSessionPermission.findFirst({
+        where: { sessionId, facultyId, role: { in: ['OWNER', 'EDITOR'] } },
+      }),
+      prisma.placementSession.findUnique({ where: { id: sessionId }, select: { status: true } }),
+    ]);
     if (!permission) {
       throw new ForbiddenError('You do not have permission to edit this session.');
     }
-
-    const existing = await prisma.placementSession.findUnique({
-      where: { id: sessionId },
-      select: { status: true },
-    });
     if (!existing) throw new NotFoundError('Session not found.');
     if (existing.status !== 'DRAFT') {
       throw new BadRequestError('Only draft sessions can be edited.');

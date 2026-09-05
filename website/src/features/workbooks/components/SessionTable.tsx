@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { sessionReportService, AttendanceSession, SessionStatus, WorkbookFilters } from '../api/workbookService';
 import { Input } from '@/components/ui/input';
@@ -61,18 +61,31 @@ function TableColGroup({ cols }: { cols: readonly ColDef[] }) {
 }
 
 // ─── Virtual scroll ───────────────────────────────────────────────────────────
-function useVirtualScroll(items: AttendanceSession[]) {
+function useVirtualScroll<T>(items: T[]) {
   const ref = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop]           = useState(0);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
+  const rafId = useRef<number | null>(null);
 
-  const onScroll = useCallback(() => { if (ref.current) setScrollTop(ref.current.scrollTop); }, []);
+  // Batched to at most one state update per animation frame — an unthrottled
+  // scroll handler fires 60-100+ times/sec during a fling and would force a
+  // full re-render (recomputing visible rows) on every single one of them.
+  const onScroll = useCallback(() => {
+    if (rafId.current !== null) return;
+    rafId.current = requestAnimationFrame(() => {
+      rafId.current = null;
+      if (ref.current) setScrollTop(ref.current.scrollTop);
+    });
+  }, []);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+    };
   }, [onScroll]);
 
   useEffect(() => {
@@ -232,6 +245,28 @@ export function SessionTable() {
   });
 
   const sessions   = data?.data ?? [];
+
+  // Precompute per-row display strings once per fetched page instead of on
+  // every render — this array feeds a virtualized/scrolling table, so without
+  // memoizing here, date formatting and topic derivation (previously done
+  // twice per row) would re-run for every visible row on every single
+  // scroll-driven re-render.
+  const sessionsFormatted = useMemo(() => {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return ((data?.data ?? []) as AttendanceSession[]).map((session) => {
+      const d = new Date(session.date);
+      const dateStr = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
+      // Computed once — each usage below applies its own fallback text
+      // (sessionName vs. the standalone Topic column used different ones).
+      const derivedTopic = deriveTopicFromSubject(session.subject?.name);
+      const sessionName = `ES-${session.topic || derivedTopic || 'Session'}(${session.academicYear?.name || 'All Years'},${dateStr},${session.room?.name || 'N/A'})`;
+      return { ...session, dateStr, derivedTopic, sessionName };
+    });
+    // `data` (not the derived `sessions` const) is the stable react-query
+    // reference — depending on `sessions` would re-run this every render
+    // since `data?.data ?? []` produces a new array identity each time.
+  }, [data]);
+
   const meta       = data?.meta;
   const totalPages = meta?.totalPages ?? 1;
   const total      = meta?.total ?? 0;
@@ -282,7 +317,7 @@ export function SessionTable() {
     setSelectedIds(next);
   };
 
-  const { ref: scrollRef, totalH, visible, offsetTop, start, scrollbarWidth } = useVirtualScroll(sessions);
+  const { ref: scrollRef, totalH, visible, offsetTop, start, scrollbarWidth } = useVirtualScroll(sessionsFormatted);
 
   return (
     <div className="space-y-3">
@@ -296,9 +331,9 @@ export function SessionTable() {
           <div className="space-y-1.5">
             <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Academic Year</label>
             <div className="flex gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-950 rounded-lg">
-              <button onClick={() => handleFilterChange({ academicYear: undefined })} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${!filters.academicYear ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>All</button>
+              <button onClick={() => handleFilterChange({ academicYear: undefined })} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-[color,background-color,box-shadow] ${!filters.academicYear ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>All</button>
               {YEAR_OPTIONS.map((year) => (
-                <button key={year} onClick={() => handleFilterChange({ academicYear: year })} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${filters.academicYear === year ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>{year}</button>
+                <button key={year} onClick={() => handleFilterChange({ academicYear: year })} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-[color,background-color,box-shadow] ${filters.academicYear === year ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>{year}</button>
               ))}
             </div>
           </div>
@@ -439,12 +474,7 @@ export function SessionTable() {
                 <tbody>
                   {visible.map((session, i) => {
                     const rowNum = (page - 1) * PAGE_SIZE + (start + i) + 1;
-                    const pad    = (n: number) => n.toString().padStart(2, '0');
-                    const d      = new Date(session.date);
-                    const dateStr = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
-                    // Convention: ES-Topic(AcYear,Date,Room) — topic derived from subject when topic field is null
-                    const topicDisplay = session.topic || deriveTopicFromSubject(session.subject?.name) || 'Session';
-                    const sessionName = `ES-${topicDisplay}(${session.academicYear?.name || 'All Years'},${dateStr},${session.room?.name || 'N/A'})`;
+                    const { dateStr, derivedTopic, sessionName } = session;
                     const isSelected = selectedIds.has(session.id);
 
                     return (
@@ -463,7 +493,7 @@ export function SessionTable() {
                         <td className="px-4 text-sm text-zinc-700 dark:text-zinc-300 truncate" title={session.faculty?.name}>{session.faculty?.name ?? '—'}</td>
                         <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400 truncate">{session.room?.name ?? '—'}</td>
                         <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400 truncate">{session.academicYear?.name ?? '—'}</td>
-                        <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400 truncate">{session.topic ?? deriveTopicFromSubject(session.subject?.name) ?? '—'}</td>
+                        <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400 truncate">{session.topic ?? derivedTopic ?? '—'}</td>
                         <td className="px-4 text-sm text-zinc-500">{dateStr}</td>
                         <td className="px-4 text-center"><StatusBadge status={session.status} /></td>
                         <td className="px-4 text-center text-sm font-semibold text-emerald-600 dark:text-emerald-400">

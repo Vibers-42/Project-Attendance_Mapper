@@ -72,33 +72,6 @@ class StudentRepository {
   }
 
   /**
-   * Returns { [rollNumber]: roomName | null } for the given roll numbers —
-   * the room from each student's MOST RECENT attendance record (their latest
-   * scan), used for the "Room Number" column in the Student Master Data view.
-   * `distinct` + `orderBy: timestamp desc` picks exactly one row per roll
-   * number, taken from the top of the sort order (the latest scan).
-   */
-  async getLatestRoomsForRollNumbers(rollNumbers) {
-    if (!rollNumbers || rollNumbers.length === 0) return {};
-
-    const records = await prisma.attendanceRecord.findMany({
-      where: { studentRollNumber: { in: rollNumbers } },
-      orderBy: { timestamp: 'desc' },
-      distinct: ['studentRollNumber'],
-      select: {
-        studentRollNumber: true,
-        session: { select: { room: { select: { name: true } } } },
-      },
-    });
-
-    const latestRoomByRoll = {};
-    for (const record of records) {
-      latestRoomByRoll[record.studentRollNumber] = record.session?.room?.name ?? null;
-    }
-    return latestRoomByRoll;
-  }
-
-  /**
    * Returns ALL students matching filters, unpaginated, sorted by timetable
    * then roll number. Used for generating complete attendance report sheets
    * (e.g. the "Overall Attendance" workbook sheet), where every student for

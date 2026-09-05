@@ -28,15 +28,24 @@ class AttendanceService {
   async createSession(facultyId, data) {
     const prisma = require('../config/prisma');
 
-    // Resolve text names → UUIDs (mobile app sends human-readable labels)
+    // Resolve text names → UUIDs (mobile app sends human-readable labels).
+    // Subject and academic-year lookups are independent — run them together.
+    const [subjectFound, yearFound] = await Promise.all([
+      data.subject && !data.subjectId
+        ? prisma.subject.findFirst({ where: { name: data.subject } })
+        : Promise.resolve(null),
+      data.year && !data.academicYearId
+        ? prisma.academicYear.findFirst({ where: { name: data.year } })
+        : Promise.resolve(null),
+    ]);
+
     let subjectId = data.subjectId;
     let academicYearId = data.academicYearId;
     let derivedTopic = null;
 
     if (data.subject && !subjectId) {
-      const found = await prisma.subject.findFirst({ where: { name: data.subject } });
-      if (found) {
-        subjectId = found.id;
+      if (subjectFound) {
+        subjectId = subjectFound.id;
       } else if (!data.topic) {
         // Subject not yet in DB — derive short topic name so it isn't lost
         const idx = data.subject.lastIndexOf(' - ');
@@ -44,8 +53,7 @@ class AttendanceService {
       }
     }
     if (data.year && !academicYearId) {
-      const found = await prisma.academicYear.findFirst({ where: { name: data.year } });
-      academicYearId = found?.id;
+      academicYearId = yearFound?.id;
     }
 
     // Strip frontend-only text fields, id, and room fields — templates never
@@ -93,15 +101,17 @@ class AttendanceService {
       throw new ValidationError('Room number is required.');
     }
 
-    const template = await prisma.attendanceSession.findUnique({ where: { id: templateId } });
+    // Template fetch and room resolution are independent — run them together.
+    const [template, roomId] = await Promise.all([
+      prisma.attendanceSession.findUnique({ where: { id: templateId } }),
+      this._resolveRoomId(roomNumber),
+    ]);
     if (!template || !template.isTemplate) {
       throw new NotFoundError('Session not found.');
     }
     if (template.status !== 'CREATED' && template.status !== 'ACTIVE') {
       throw new ConflictError('This session is no longer active.');
     }
-
-    const roomId = await this._resolveRoomId(roomNumber);
 
     const sessionData = {
       facultyId,
@@ -154,22 +164,33 @@ class AttendanceService {
 
     const prisma = require('../config/prisma');
 
-    // Resolve text names → relation IDs (same logic as createSession)
+    // Resolve text names → relation IDs (same logic as createSession).
+    // Subject, academic-year, and room lookups are all independent — run
+    // them together instead of one after another.
+    const [subjectFound, yearFound, resolvedRoomId] = await Promise.all([
+      data.subject && !data.subjectId
+        ? prisma.subject.findFirst({ where: { name: data.subject } })
+        : Promise.resolve(null),
+      data.year && !data.academicYearId
+        ? prisma.academicYear.findFirst({ where: { name: data.year } })
+        : Promise.resolve(null),
+      data.roomNumber && data.roomNumber.trim() && !data.roomId
+        ? this._resolveRoomId(data.roomNumber)
+        : Promise.resolve(null),
+    ]);
+
     let subjectId = data.subjectId;
     let academicYearId = data.academicYearId;
+    let roomId = data.roomId;
 
     if (data.subject && !subjectId) {
-      const found = await prisma.subject.findFirst({ where: { name: data.subject } });
-      subjectId = found?.id;
+      subjectId = subjectFound?.id;
     }
     if (data.year && !academicYearId) {
-      const found = await prisma.academicYear.findFirst({ where: { name: data.year } });
-      academicYearId = found?.id;
+      academicYearId = yearFound?.id;
     }
-
-    let roomId = data.roomId;
     if (data.roomNumber && data.roomNumber.trim() && !roomId) {
-      roomId = await this._resolveRoomId(data.roomNumber);
+      roomId = resolvedRoomId;
     }
 
     // Strip restricted and frontend-only fields

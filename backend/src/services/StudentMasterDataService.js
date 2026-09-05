@@ -34,16 +34,8 @@ class StudentMasterDataService {
       ]);
     }
 
-    // Attach each student's most-recent-scan room (only for this page — cheap).
-    const rollNumbers = students.map((s) => s.rollNumber);
-    const latestRoomByRoll = await StudentRepository.getLatestRoomsForRollNumbers(rollNumbers);
-    const studentsWithRoom = students.map((s) => ({
-      ...s,
-      roomNumber: latestRoomByRoll[s.rollNumber] ?? null,
-    }));
-
     return {
-      students: studentsWithRoom,
+      students,
       meta: {
         total,
         page,

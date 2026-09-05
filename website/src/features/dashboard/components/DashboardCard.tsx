@@ -60,7 +60,7 @@ export function DashboardCard({
 
   return (
     <Link href={href} className="block group h-full">
-      <div className="relative h-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden transition-all duration-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-zinc-300 dark:hover:border-zinc-700">
+      <div className="relative h-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden transition-[border-color,box-shadow,transform] duration-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-zinc-300 dark:hover:border-zinc-700">
 
         {/* Colored top accent bar */}
         <div className={`absolute top-0 left-0 right-0 h-[3px] ${c.bar}`} />

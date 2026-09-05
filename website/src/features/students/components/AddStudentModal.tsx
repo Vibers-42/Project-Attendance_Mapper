@@ -83,7 +83,7 @@ export function AddStudentModal({ isOpen, onClose, moduleType = 'attendance' }: 
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-zinc-900 dark:text-zinc-50">
+          <DialogTitle className="flex items-center gap-2">
             <UserPlus className="w-5 h-5 text-blue-600" />
             Add Student to Master Data
           </DialogTitle>

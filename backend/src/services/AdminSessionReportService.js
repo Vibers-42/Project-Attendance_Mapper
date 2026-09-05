@@ -248,12 +248,20 @@ class AdminSessionReportService {
       );
     }
 
-    // ── 6. Build the UNION of all present roll numbers across all sessions ─────
-    // Run student query in parallel with building the set — saves one serial round-trip.
+    // ── 6. Build the UNION of all present roll numbers across all sessions,   ──
+    // plus which room each student was actually scanned in (the room attached
+    // to the specific session that scanned them — not any other room in this
+    // workbook). If a student was somehow scanned in more than one room for
+    // this class, the first one found wins.
     const presentRollNumbers = new Set();
+    const roomByRollNumber = new Map();
     for (const session of sessions) {
+      const roomName = session.room?.name || null;
       for (const record of session.records) {
         presentRollNumbers.add(record.studentRollNumber);
+        if (roomName && !roomByRollNumber.has(record.studentRollNumber)) {
+          roomByRollNumber.set(record.studentRollNumber, roomName);
+        }
       }
     }
 
@@ -291,6 +299,7 @@ class AdminSessionReportService {
         'Student Name':      student.name,
         'Timetable':         student.timetable || '',
         'Attendance Status': isPresent ? 'P' : 'A',
+        'Room Number':       isPresent ? (roomByRollNumber.get(student.rollNumber) || '-') : '-',
       };
     });
 
@@ -416,9 +425,20 @@ class AdminSessionReportService {
    */
   async downloadSingleSession(sessionId) {
     // ── 1. Load session ────────────────────────────────────────────────────────
+    // select (not include) — only the fields this worksheet actually renders.
     const session = await prisma.attendanceSession.findUnique({
-      where:   { id: sessionId },
-      include: { faculty: true, room: true, subject: true, academicYear: true, records: true },
+      where:  { id: sessionId },
+      select: {
+        date:          true,
+        topic:         true,
+        labIncharge:   true,
+        sessionTime:   true,
+        faculty:       { select: { facultyId: true, name: true } },
+        room:          { select: { name: true } },
+        subject:       { select: { name: true } },
+        academicYear:  { select: { name: true } },
+        records:       { select: { studentRollNumber: true } },
+      },
     });
     if (!session) throw new NotFoundError('Attendance session not found.');
     if (session.records.length === 0) {

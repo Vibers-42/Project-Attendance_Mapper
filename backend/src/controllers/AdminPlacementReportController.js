@@ -1,6 +1,6 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../config/prisma');
 const { sendSuccess } = require('../utils/apiResponse');
+const { NotFoundError } = require('../utils/AppError');
 const placementService = require('../services/PlacementService');
 
 class AdminPlacementReportController {
@@ -101,7 +101,7 @@ class AdminPlacementReportController {
       },
     });
 
-    if (!session) throw new Error('Session not found.');
+    if (!session) throw new NotFoundError('Session not found.');
 
     const students = await prisma.placementStudent.findMany({
       where: { sessionId: id },

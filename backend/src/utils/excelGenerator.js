@@ -23,6 +23,9 @@ const buildWorkbook = async (overallData, roomDataMap, sessionInfoMap) => {
   const wb = new ExcelJS.Workbook();
 
   // ── 1. Overall Attendance sheet ────────────────────────────────────────────
+  // Room Number lives only here (not on the per-room sheets below, since every
+  // student on a per-room sheet is already in that one room by definition —
+  // this sheet is the only place that spans multiple rooms per student row).
   const ows = wb.addWorksheet('Overall Attendance');
   ows.columns = [
     { width: 6  }, // A S.No
@@ -30,12 +33,13 @@ const buildWorkbook = async (overallData, roomDataMap, sessionInfoMap) => {
     { width: 32 }, // C Student Name
     { width: 15 }, // D Timetable
     { width: 18 }, // E Attendance Status
+    { width: 16 }, // F Room Number
   ];
 
-  const oCols = ['A','B','C','D','E'];
+  const oCols = ['A','B','C','D','E','F'];
   // Header
   ows.getRow(1).height = 22;
-  ['S.No','Roll No','Student Name','Timetable','Attendance Status'].forEach((h, ci) => {
+  ['S.No','Roll No','Student Name','Timetable','Attendance Status','Room Number'].forEach((h, ci) => {
     const cell = ows.getCell(`${oCols[ci]}1`);
     cell.value = h;
     S(cell, { bg: 'FF2563EB', fg: 'FFFFFFFF', bold: true, border: true, alignH: 'center' });
@@ -45,12 +49,13 @@ const buildWorkbook = async (overallData, roomDataMap, sessionInfoMap) => {
     const rn = idx + 2;
     ows.getRow(rn).height = 18;
     const bg  = idx % 2 === 1 ? 'FFEFF6FF' : 'FFFFFFFF';
-    const vals = [row['S.No'], row['Roll No'], row['Student Name'], row['Timetable'], row['Attendance Status']];
+    const vals = [row['S.No'], row['Roll No'], row['Student Name'], row['Timetable'], row['Attendance Status'], row['Room Number']];
     vals.forEach((val, ci) => {
       const cell = ows.getCell(`${oCols[ci]}${rn}`);
       cell.value = val;
-      // S.No (ci=0) and Attendance Status (ci=4) are centered; rest left-aligned with indent
-      S(cell, { bg, fg: 'FF1F2937', border: true, alignH: ci === 0 || ci === 4 ? 'center' : 'left', indent: ci === 0 || ci === 4 ? 0 : 1 });
+      // S.No (0), Attendance Status (4), Room Number (5) are centered; rest left-aligned with indent
+      const centered = ci === 0 || ci === 4 || ci === 5;
+      S(cell, { bg, fg: 'FF1F2937', border: true, alignH: centered ? 'center' : 'left', indent: centered ? 0 : 1 });
     });
   });
 

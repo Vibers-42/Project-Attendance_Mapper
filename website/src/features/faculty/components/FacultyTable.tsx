@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { facultyService, Faculty } from '../api/facultyService';
 import { Input } from '@/components/ui/input';
@@ -45,20 +45,31 @@ function TableColGroup() {
 }
 
 // ─── Virtual scroll hook ────────────────────────────────────────────────────────
-function useVirtualScroll(items: Faculty[]) {
+function useVirtualScroll<T>(items: T[]) {
   const ref = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop]           = useState(0);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
+  const rafId = useRef<number | null>(null);
 
+  // Batched to at most one state update per animation frame — an unthrottled
+  // scroll handler fires 60-100+ times/sec during a fling and would force a
+  // full re-render (recomputing visible rows) on every single one of them.
   const onScroll = useCallback(() => {
-    if (ref.current) setScrollTop(ref.current.scrollTop);
+    if (rafId.current !== null) return;
+    rafId.current = requestAnimationFrame(() => {
+      rafId.current = null;
+      if (ref.current) setScrollTop(ref.current.scrollTop);
+    });
   }, []);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+    };
   }, [onScroll]);
 
   useEffect(() => {
@@ -141,6 +152,20 @@ export function FacultyTable() {
   });
 
   const facultyList = data?.data ?? [];
+
+  // Precompute the created-date string once per fetched page instead of on
+  // every render — this array feeds a virtualized/scrolling table, so without
+  // memoizing here, toLocaleDateString() (noticeably heavier than manual
+  // formatting) would re-run for every visible row on every scroll-driven
+  // re-render.
+  // `data` (not the derived `facultyList` const) is the stable react-query
+  // reference — depending on `facultyList` would re-run this every render
+  // since `data?.data ?? []` produces a new array identity each time.
+  const facultyListFormatted = useMemo(
+    () => (data?.data ?? []).map((f: any) => ({ ...f, createdAtStr: new Date(f.createdAt).toLocaleDateString() })),
+    [data],
+  );
+
   const meta        = data?.meta;
   const totalPages  = meta?.totalPages ?? 1;
   const total       = meta?.total ?? 0;
@@ -156,7 +181,7 @@ export function FacultyTable() {
     if (e.key === 'Enter') { const n = parseInt(jumpValue); if (!isNaN(n)) goTo(n); }
   };
 
-  const { ref: scrollRef, totalH, visible, offsetTop, start, scrollbarWidth } = useVirtualScroll(facultyList);
+  const { ref: scrollRef, totalH, visible, offsetTop, start, scrollbarWidth } = useVirtualScroll(facultyListFormatted);
 
   return (
     <>
@@ -351,7 +376,7 @@ export function FacultyTable() {
 
                           {/* Created Date */}
                           <td className="px-4 text-xs text-zinc-500 dark:text-zinc-400">
-                            {new Date(faculty.createdAt).toLocaleDateString()}
+                            {faculty.createdAtStr}
                           </td>
 
                           {/* Status */}

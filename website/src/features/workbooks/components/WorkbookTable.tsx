@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { sessionReportService, WorkbookRecord, WorkbookFilters } from '../api/workbookService';
 import { placementReportService, PlacementReportRecord, PlacementReportFilters } from '../../placements/api/placementReportService';
@@ -65,16 +65,27 @@ function useVirtualScroll(items: any[]) {
   const ref = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop]       = useState(0);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
+  const rafId = useRef<number | null>(null);
 
+  // Batched to at most one state update per animation frame — an unthrottled
+  // scroll handler fires 60-100+ times/sec during a fling and would force a
+  // full re-render (recomputing visible rows) on every single one of them.
   const onScroll = useCallback(() => {
-    if (ref.current) setScrollTop(ref.current.scrollTop);
+    if (rafId.current !== null) return;
+    rafId.current = requestAnimationFrame(() => {
+      rafId.current = null;
+      if (ref.current) setScrollTop(ref.current.scrollTop);
+    });
   }, []);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+    };
   }, [onScroll]);
 
   useEffect(() => {
@@ -229,6 +240,26 @@ export function WorkbookTable({ moduleType = 'attendance' }: WorkbookTableProps)
   });
 
   const workbooks  = data?.data ?? [];
+
+  // Precompute per-row display strings once per fetched page instead of on
+  // every render — this array feeds a virtualized/scrolling table, so without
+  // memoizing here, date/time parsing+formatting would re-run for every
+  // visible row on every single scroll-driven re-render.
+  const workbooksFormatted = useMemo(() => {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return (data?.data ?? []).map((w: any) => {
+      const d = new Date(w.date);
+      const dateStr = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
+      const timeStr = isPlacement && w.time
+        ? new Date(w.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : undefined;
+      return { ...w, dateStr, timeStr };
+    });
+    // `data` (not the derived `workbooks` const) is the stable react-query
+    // reference — depending on `workbooks` would re-run this every render
+    // since `data?.data ?? []` produces a new array identity each time.
+  }, [data, isPlacement]);
+
   const meta       = data?.meta;
   const totalPages = meta?.totalPages ?? 1;
   const total      = meta?.total ?? 0;
@@ -276,7 +307,7 @@ export function WorkbookTable({ moduleType = 'attendance' }: WorkbookTableProps)
     if (e.key === 'Enter') { const n = parseInt(jumpValue); if (!isNaN(n)) goTo(n); }
   };
 
-  const { ref: scrollRef, totalH, visible, offsetTop, start, scrollbarWidth } = useVirtualScroll(workbooks);
+  const { ref: scrollRef, totalH, visible, offsetTop, start, scrollbarWidth } = useVirtualScroll(workbooksFormatted);
 
   return (
     <div className="space-y-3">
@@ -304,7 +335,7 @@ export function WorkbookTable({ moduleType = 'attendance' }: WorkbookTableProps)
                 <div className="flex gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-950 rounded-lg">
                   <button
                     onClick={() => handleFilterChange({ academicYear: undefined })}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${!filters.academicYear ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-[color,background-color,box-shadow] ${!filters.academicYear ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
                   >
                     All
                   </button>
@@ -312,7 +343,7 @@ export function WorkbookTable({ moduleType = 'attendance' }: WorkbookTableProps)
                     <button
                       key={year}
                       onClick={() => handleFilterChange({ academicYear: year })}
-                      className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${filters.academicYear === year ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                      className={`px-3 py-1.5 text-sm font-medium rounded-md transition-[color,background-color,box-shadow] ${filters.academicYear === year ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
                     >
                       {year}
                     </button>
@@ -466,9 +497,6 @@ export function WorkbookTable({ moduleType = 'attendance' }: WorkbookTableProps)
                 <tbody>
                   {visible.map((workbook, i) => {
                     const rowNum = (page - 1) * PAGE_SIZE + (start + i) + 1;
-                    const pad    = (n: number) => n.toString().padStart(2, '0');
-                    const d      = new Date(workbook.date);
-                    const dateStr = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
                     const isDownloading = downloadingId === workbook.id;
                     const title = isPlacement ? workbook.title : workbook.workbookName;
                     const presentCount = isPlacement ? workbook.presentCount : workbook.totalRecords;
@@ -508,24 +536,24 @@ export function WorkbookTable({ moduleType = 'attendance' }: WorkbookTableProps)
                         )}
 
                         {/* Date */}
-                        <td className="px-4 text-sm text-zinc-500">{dateStr}</td>
+                        <td className="px-4 text-sm text-zinc-500">{workbook.dateStr}</td>
 
                         {/* Placement Specific Columns */}
                         {isPlacement && (
                           <>
                             <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400">
-                              {new Date(workbook.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {workbook.timeStr}
                             </td>
                             <td className="px-4 text-sm text-zinc-600 dark:text-zinc-400">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${workbook.mode === 'Virtual' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300' : 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300'}`}>
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${workbook.mode === 'Virtual' ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}>
                                 {workbook.mode}
                               </span>
                             </td>
                             <td className="px-4 text-center">
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                                workbook.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' : 
-                                workbook.status === 'ACTIVE' ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20' : 
-                                'bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700'
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                                workbook.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                workbook.status === 'ACTIVE' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                                'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'
                               }`}>
                                 {workbook.status}
                               </span>
@@ -540,24 +568,26 @@ export function WorkbookTable({ moduleType = 'attendance' }: WorkbookTableProps)
 
                         {/* Actions */}
                         <td className="px-4 text-right">
-                          <div className="flex justify-end gap-2.5">
-                            <button
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="outline" size="icon"
+                              className="h-7 w-7 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 border-blue-200 dark:border-blue-800"
                               onClick={() => handleDownload(workbook)}
                               disabled={isDownloading}
                               title={isPlacement ? "Download placement report" : "Download consolidated workbook"}
-                              className="inline-flex items-center justify-center w-9 h-9 rounded-[12px] border-[1.5px] border-blue-200 dark:border-blue-900 text-blue-500 bg-white dark:bg-zinc-900 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors disabled:opacity-50"
                             >
-                              {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                            </button>
-                            
+                              {isDownloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                            </Button>
+
                             {!isPlacement && (
-                              <button
+                              <Button
+                                variant="outline" size="icon"
+                                className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
                                 onClick={() => setDeleteWorkbookTarget(workbook)}
                                 title="Delete all sessions in this class"
-                                className="inline-flex items-center justify-center w-9 h-9 rounded-[12px] border-[1.5px] border-zinc-200 dark:border-zinc-800 text-red-500 bg-white dark:bg-zinc-900 hover:bg-red-50 dark:hover:bg-red-900/20 hover:border-red-200 dark:hover:border-red-900 hover:text-red-600 transition-colors"
                               >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
                             )}
                           </div>
                         </td>

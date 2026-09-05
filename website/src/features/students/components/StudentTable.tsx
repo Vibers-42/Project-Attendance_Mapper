@@ -23,6 +23,7 @@ const COLS = [
   { key: 'roll',   label: 'Roll No',       width: 148,  align: 'left'  },
   { key: 'name',   label: 'Student Name',  width: 'auto' as const, align: 'left'  },
   { key: 'tt',     label: 'Timetable',     width: 130,  align: 'left'  },
+  { key: 'room',   label: 'Room Number',   width: 130,  align: 'left'  },
   { key: 'status', label: 'Status',        width: 90,   align: 'right' },
   { key: 'action', label: 'Action',        width: 68,   align: 'right' },
 ] as const;
@@ -377,6 +378,11 @@ export function StudentTable({ moduleType = 'attendance' }: { moduleType?: 'atte
                           <td className="px-4 text-xs text-zinc-500 dark:text-zinc-400">
                             {student.timetable ?? '—'}
                           </td>
+                          {/* Room Number (from most recent scan) */}
+                          <td className="px-4 text-xs text-zinc-500 dark:text-zinc-400">
+                            {student.roomNumber ?? '—'}
+                          </td>
+                          {/* Status */}
                           <td className="px-4 text-right">
                             <StatusBadge status={student.status || 'ACTIVE'} />
                           </td>

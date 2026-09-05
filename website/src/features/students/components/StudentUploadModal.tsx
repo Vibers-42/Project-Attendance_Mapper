@@ -19,20 +19,53 @@ interface StudentUploadModalProps {
 const YEAR_OPTIONS = ['2nd Year', '3rd Year'] as const;
 type YearOption = typeof YEAR_OPTIONS[number];
 
+const ACCEPTED_EXTENSIONS = ['.xlsx', '.xls'];
+
 export function StudentUploadModal({ isOpen, onClose, moduleType = 'attendance' }: StudentUploadModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<YearOption | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
   const isPlacement = moduleType === 'placement';
   const queryKey = isPlacement ? 'placement-students' : 'students';
+  const canSelectFile = isPlacement || !!selectedYear;
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) processFile(selectedFile);
+  };
+
+  const isAcceptedFile = (candidate: File) =>
+    ACCEPTED_EXTENSIONS.some((ext) => candidate.name.toLowerCase().endsWith(ext));
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!canSelectFile) return;
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (!canSelectFile) return;
+
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (!droppedFile) return;
+
+    if (!isAcceptedFile(droppedFile)) {
+      setError('Please drop an Excel file (.xlsx or .xls).');
+      return;
+    }
+    processFile(droppedFile);
   };
 
   const processFile = (selectedFile: File) => {
@@ -148,20 +181,43 @@ export function StudentUploadModal({ isOpen, onClose, moduleType = 'attendance' 
         {!file && (
           <div
             className={`border-2 border-dashed rounded-xl p-12 flex flex-col items-center justify-center transition-colors ${
-              canUpload || isPlacement
-                ? 'border-zinc-300 dark:border-zinc-700 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50'
-                : 'border-zinc-200 dark:border-zinc-800 opacity-50 cursor-not-allowed'
+              !canSelectFile
+                ? 'border-zinc-200 dark:border-zinc-800 opacity-50 cursor-not-allowed'
+                : isDragging
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 cursor-pointer'
+                : 'border-zinc-300 dark:border-zinc-700 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/50'
             }`}
-            onClick={() => (canUpload || isPlacement) && fileInputRef.current?.click()}
+            onClick={() => canSelectFile && fileInputRef.current?.click()}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
-            <UploadCloud className="w-12 h-12 text-zinc-400 mb-4" />
+            <UploadCloud className={`w-12 h-12 mb-4 ${isDragging ? 'text-blue-500' : 'text-zinc-400'}`} />
             <p className="text-zinc-600 dark:text-zinc-400 font-medium text-center">
-              Click to browse or drag and drop<br/>
-              <span className="text-sm font-normal">Excel files only (.xlsx, .xls)</span>
+              {isDragging ? 'Drop the file here' : 'Drag and drop your Excel file here'}
+              <br />
+              <span className="text-sm font-normal">or use the button below</span>
             </p>
-            <input 
-              type="file" 
-              className="hidden" 
+
+            {/* Explicit upload button — a guaranteed-working backup to drag-and-drop */}
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4"
+              disabled={!canSelectFile}
+              onClick={(e) => {
+                e.stopPropagation();
+                fileInputRef.current?.click();
+              }}
+            >
+              Browse Files
+            </Button>
+
+            <p className="text-xs text-zinc-400 mt-3">Excel files only (.xlsx, .xls)</p>
+
+            <input
+              type="file"
+              className="hidden"
               accept=".xlsx, .xls"
               ref={fileInputRef}
               onChange={handleFileSelect}

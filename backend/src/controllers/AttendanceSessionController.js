@@ -116,7 +116,7 @@ class AttendanceSessionController {
     // Build a human-readable summary that reflects both inserted and skipped counts.
     let message = `${result.count} attendance record(s) submitted successfully.`;
     if (result.skipped && result.skipped.length > 0) {
-      message += ` ${result.skipped.length} student(s) already present in another active session were skipped.`;
+      message += ` ${result.skipped.length} student(s) already marked present in another room for this class were skipped.`;
     }
 
     return sendSuccess(res, {

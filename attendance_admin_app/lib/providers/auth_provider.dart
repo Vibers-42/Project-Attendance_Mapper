@@ -93,11 +93,16 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// Runs after every logout (manual or forced by a 401) so other providers
+  /// can drop the previous faculty's cached data. Wired up in main.dart.
+  VoidCallback? onLoggedOut;
+
   Future<void> logout() async {
     AppLogger.info('[AuthProvider] Logging out: ${_currentUser?.facultyId}');
     await _authRepository.logout();
     _currentUser = null;
     _errorMessage = null;
+    onLoggedOut?.call();
     notifyListeners();
   }
 

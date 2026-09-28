@@ -29,11 +29,20 @@ router.get('/sessions/:id/students', placementController.getSessionStudents.bind
 // POST /api/v1/placement/sessions/:id/attendance — submit scanned roll numbers
 router.post('/sessions/:id/attendance', placementController.updateAttendance.bind(placementController));
 
+// POST /api/v1/placement/sessions/:id/attendance/remove — undo synced scans (PRESENT → PENDING)
+router.post('/sessions/:id/attendance/remove', placementController.unmarkAttendance.bind(placementController));
+
 // GET /api/v1/placement/sessions/:id/report — fetch attendance report (COMPLETED sessions only)
 router.get('/sessions/:id/report', placementController.getReport.bind(placementController));
 
 // GET /api/v1/placement/sessions/:id/report/excel — download Excel workbook
 router.get('/sessions/:id/report/excel', placementController.downloadExcelReport.bind(placementController));
+
+// GET /api/v1/placement/sessions/:id/permissions — faculty with access to this session
+router.get('/sessions/:id/permissions', placementController.getPermissions.bind(placementController));
+
+// PUT /api/v1/placement/sessions/:id/permissions — owner replaces co-faculty list
+router.put('/sessions/:id/permissions', placementController.setPermissions.bind(placementController));
 
 // PATCH /api/v1/placement/sessions/:id/start — transition DRAFT → ACTIVE
 router.patch('/sessions/:id/start', placementController.startSession.bind(placementController));

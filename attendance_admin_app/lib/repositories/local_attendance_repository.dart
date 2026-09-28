@@ -105,7 +105,12 @@ class LocalAttendanceRepository {
     }
   }
 
+  /// Clears the active session and its scans. The cached student roster
+  /// ('validStudents') is kept — it isn't session data, and losing it would
+  /// break offline scanning after an app restart.
   void clearAttendance() {
+    final roster = _box.get('validStudents');
     _box.clear();
+    if (roster != null) _box.put('validStudents', roster);
   }
 }

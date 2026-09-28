@@ -77,9 +77,11 @@ class PlacementRepository {
 
   // ── Faculty list ──────────────────────────────────────────────────────────────
 
+  // Any active faculty can use the app — including ones promoted to
+  // SUPER_ADMIN, who would otherwise be impossible to add as co-faculty.
   async getActiveFaculty() {
     return prisma.faculty.findMany({
-      where: { isActive: true, role: 'FACULTY' },
+      where: { isActive: true },
       select: { id: true, facultyId: true, name: true },
       orderBy: { name: 'asc' },
     });
@@ -101,9 +103,10 @@ class PlacementRepository {
    * Permission-gated: faculty must have an explicit permission entry.
    */
   async getSessionStudents(sessionId, facultyId) {
-    const permission = await prisma.placementSessionPermission.findFirst({
-      where: { sessionId, facultyId },
-    });
+    const [permission, session] = await Promise.all([
+      prisma.placementSessionPermission.findFirst({ where: { sessionId, facultyId } }),
+      prisma.placementSession.findUnique({ where: { id: sessionId }, select: { status: true } }),
+    ]);
     if (!permission) {
       throw new ForbiddenError('You do not have permission to access this session.');
     }
@@ -120,6 +123,8 @@ class PlacementRepository {
     });
 
     return {
+      // Lets co-faculty scanners notice when someone else finalized the session.
+      sessionStatus: session?.status ?? null,
       students,
       counts: {
         eligible: students.length,
@@ -132,8 +137,41 @@ class PlacementRepository {
 
   // ── Attendance update ─────────────────────────────────────────────────────────
 
+  /**
+   * Marks scanned roll numbers PRESENT. Several OWNER/EDITOR faculty can scan
+   * the same session at once, each syncing their scans here as they go.
+   * COMPLETED sessions are accepted too, so scans a co-faculty made offline
+   * still land if someone else finalized before their phone synced.
+   */
   async updateAttendance(sessionId, facultyId, rollNumbers) {
     // Session and permission are independent lookups — run them together.
+    const [session, permission] = await Promise.all([
+      prisma.placementSession.findUnique({ where: { id: sessionId }, select: { status: true } }),
+      prisma.placementSessionPermission.findFirst({
+        where: { sessionId, facultyId, role: { in: ['OWNER', 'EDITOR'] } },
+      }),
+    ]);
+    if (!session) throw new NotFoundError('Session not found.');
+    if (session.status !== 'ACTIVE' && session.status !== 'COMPLETED') {
+      throw new BadRequestError('Session is not active.');
+    }
+    if (!permission) {
+      throw new ForbiddenError('You do not have permission to update attendance for this session.');
+    }
+
+    // Skip already-PRESENT students so their original markedAt is kept.
+    const result = await prisma.placementStudent.updateMany({
+      where: { sessionId, rollNumber: { in: rollNumbers }, attendanceStatus: { not: 'PRESENT' } },
+      data: { attendanceStatus: 'PRESENT', markedAt: new Date() },
+    });
+    return { updated: result.count };
+  }
+
+  /**
+   * Reverts PRESENT → PENDING for roll numbers a scanner removed after they
+   * had already synced. Only while the session is still ACTIVE.
+   */
+  async unmarkAttendance(sessionId, facultyId, rollNumbers) {
     const [session, permission] = await Promise.all([
       prisma.placementSession.findUnique({ where: { id: sessionId }, select: { status: true } }),
       prisma.placementSessionPermission.findFirst({
@@ -149,10 +187,54 @@ class PlacementRepository {
     }
 
     const result = await prisma.placementStudent.updateMany({
-      where: { sessionId, rollNumber: { in: rollNumbers } },
-      data: { attendanceStatus: 'PRESENT', markedAt: new Date() },
+      where: { sessionId, rollNumber: { in: rollNumbers }, attendanceStatus: 'PRESENT' },
+      data: { attendanceStatus: 'PENDING', markedAt: null },
     });
     return { updated: result.count };
+  }
+
+  // ── Co-faculty permissions ────────────────────────────────────────────────────
+
+  /** Lists every faculty with access to a session. Any permission holder may view. */
+  async getSessionPermissions(sessionId, facultyId) {
+    const mine = await prisma.placementSessionPermission.findFirst({ where: { sessionId, facultyId } });
+    if (!mine) throw new ForbiddenError('You do not have permission to access this session.');
+
+    const rows = await prisma.placementSessionPermission.findMany({
+      where: { sessionId },
+      select: { role: true, faculty: { select: { id: true, facultyId: true, name: true } } },
+      orderBy: { grantedAt: 'asc' },
+    });
+    return rows.map((r) => ({ ...r.faculty, role: r.role }));
+  }
+
+  /**
+   * Replaces the non-owner permission list of a session. OWNER only, and not
+   * once the session is COMPLETED. The OWNER entry itself is never touched.
+   * @param {{ facultyId, role }[]} permissions - role is EDITOR or VIEWER
+   */
+  async setSessionPermissions(sessionId, facultyId, permissions) {
+    const [owner, session] = await Promise.all([
+      prisma.placementSessionPermission.findFirst({ where: { sessionId, facultyId, role: 'OWNER' } }),
+      prisma.placementSession.findUnique({ where: { id: sessionId }, select: { status: true } }),
+    ]);
+    if (!session) throw new NotFoundError('Session not found.');
+    if (!owner) throw new ForbiddenError('Only the session owner can manage faculty access.');
+    if (session.status === 'COMPLETED' || session.status === 'CANCELLED') {
+      throw new BadRequestError('Faculty access cannot be changed after the session has ended.');
+    }
+
+    const cleaned = permissions
+      .filter((p) => p.facultyId && p.facultyId !== facultyId && ['EDITOR', 'VIEWER'].includes(p.role));
+
+    await prisma.$transaction([
+      prisma.placementSessionPermission.deleteMany({ where: { sessionId, role: { not: 'OWNER' } } }),
+      prisma.placementSessionPermission.createMany({
+        data: cleaned.map((p) => ({ sessionId, facultyId: p.facultyId, role: p.role })),
+        skipDuplicates: true,
+      }),
+    ]);
+    return this.getSessionPermissions(sessionId, facultyId);
   }
 
   // ── Report ────────────────────────────────────────────────────────────────────
@@ -238,7 +320,7 @@ class PlacementRepository {
       // Mark scanned (offline) roll numbers as PRESENT.
       if (rollNumbers.length > 0) {
         await tx.placementStudent.updateMany({
-          where: { sessionId, rollNumber: { in: rollNumbers } },
+          where: { sessionId, rollNumber: { in: rollNumbers }, attendanceStatus: { not: 'PRESENT' } },
           data: { attendanceStatus: 'PRESENT', markedAt: new Date() },
         });
       }

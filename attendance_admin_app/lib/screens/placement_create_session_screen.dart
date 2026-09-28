@@ -33,15 +33,24 @@ class _PlacementCreateSessionScreenState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = Provider.of<PlacementProvider>(context, listen: false);
       final arg = ModalRoute.of(context)?.settings.arguments;
       if (arg is PlacementSessionModel) {
         _editSession = arg;
         _isEditMode = true;
         _prefillForm(arg);
+        // Show the draft's current co-faculty so the owner can edit them.
+        if (arg.myRole == 'OWNER') provider.loadSessionPermissions(arg.id);
+      } else {
+        provider.discardSessionPermissions();
       }
-      Provider.of<PlacementProvider>(context, listen: false).loadFaculty();
+      provider.loadFaculty();
     });
   }
+
+  /// Only the owner can change who else has access (always true when creating).
+  bool get _canManageFaculty =>
+      !_isEditMode || _editSession?.myRole == 'OWNER';
 
   void _prefillForm(PlacementSessionModel session) {
     _titleController.text = session.title;
@@ -218,6 +227,23 @@ class _PlacementCreateSessionScreenState
 
     if (_isEditMode && _editSession != null) {
       // ── Edit mode: update the existing draft ──────────────────────────────
+      // Save co-faculty first — updateDraft resets the form's selections.
+      if (_canManageFaculty) {
+        final ok = await provider.saveSessionPermissions(_editSession!.id);
+        if (!mounted) return;
+        if (!ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  provider.errorMessage ?? 'Failed to update session faculty.'),
+              backgroundColor: Colors.red.shade700,
+            ),
+          );
+          provider.clearError();
+          return;
+        }
+      }
+
       final updated = await provider.updateDraft(
         sessionId: _editSession!.id,
         title: _titleController.text.trim(),
@@ -457,47 +483,12 @@ class _PlacementCreateSessionScreenState
                   ],
 
                   // ── Section 3: Session Permissions ──────────────────────
-                  const SizedBox(height: 32),
-                  _SectionLabel('Session Permissions'),
-                  const SizedBox(height: 4),
-                  Text(
-                    'You are the owner. Add other faculty below.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: cs.onSurface.withValues(alpha: 0.55),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  if (provider.selectedPermissions.isNotEmpty) ...[
-                    ...provider.selectedPermissions.map(
-                      (entry) => _PermissionTile(
-                        entry: entry,
-                        onRoleChanged: (role) => provider
-                            .updatePermissionRole(entry.faculty.id, role),
-                        onRemove: () =>
-                            provider.removePermission(entry.faculty.id),
-                        cs: cs,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
+                  if (_canManageFaculty) ...[
+                    const SizedBox(height: 32),
+                    _SectionLabel('Session Permissions'),
+                    const SizedBox(height: 4),
+                    PlacementFacultyEditor(provider: provider),
                   ],
-
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.person_add_alt_outlined),
-                      label: const Text('Add Faculty'),
-                      onPressed: () =>
-                          _showFacultyPicker(context, provider),
-                      style: OutlinedButton.styleFrom(
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
 
                   const SizedBox(height: 100),
                 ],
@@ -598,9 +589,20 @@ class _PlacementCreateSessionScreenState
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       );
 
-  void _showFacultyPicker(BuildContext context, PlacementProvider provider) {
-    final currentUserId =
-        context.read<AuthProvider>().currentUser?.id;
+}
+
+// ── Co-faculty editor (create/edit screen + detail-screen "Manage Faculty") ──
+
+/// Lists the co-faculty in [PlacementProvider.selectedPermissions] with role
+/// toggles and an "Add Faculty" button. Editors can take attendance; viewers
+/// can only view.
+class PlacementFacultyEditor extends StatelessWidget {
+  final PlacementProvider provider;
+
+  const PlacementFacultyEditor({super.key, required this.provider});
+
+  void _showFacultyPicker(BuildContext context) {
+    final currentUserId = context.read<AuthProvider>().currentUser?.id;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -612,6 +614,58 @@ class _PlacementCreateSessionScreenState
         provider: provider,
         excludeId: currentUserId,
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'You are the owner. Editors can take attendance; tap a role to switch to Viewer (view only).',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: cs.onSurface.withValues(alpha: 0.55),
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (provider.isLoadingPermissions)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (provider.selectedPermissions.isNotEmpty) ...[
+          ...provider.selectedPermissions.map(
+            (entry) => _PermissionTile(
+              entry: entry,
+              onRoleChanged: (role) =>
+                  provider.updatePermissionRole(entry.faculty.id, role),
+              onRemove: () => provider.removePermission(entry.faculty.id),
+              cs: cs,
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.person_add_alt_outlined),
+            label: const Text('Add Faculty'),
+            onPressed: provider.isLoadingPermissions
+                ? null
+                : () => _showFacultyPicker(context),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1037,7 +1091,9 @@ class _FacultyPickerSheetState extends State<_FacultyPickerSheet> {
                             style: const TextStyle(fontSize: 12),
                           ),
                           onTap: () {
-                            widget.provider.addPermission(faculty, 'VIEWER');
+                            // Default to EDITOR — faculty are added so they
+                            // can help take attendance.
+                            widget.provider.addPermission(faculty, 'EDITOR');
                             Navigator.of(context).pop();
                           },
                         );

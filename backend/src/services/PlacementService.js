@@ -67,6 +67,11 @@ class PlacementService {
     return placementRepository.updateAttendance(sessionId, facultyId, rollNumbers);
   }
 
+  async unmarkAttendance(sessionId, facultyId, rollNumbers) {
+    if (!Array.isArray(rollNumbers) || rollNumbers.length === 0) return { updated: 0 };
+    return placementRepository.unmarkAttendance(sessionId, facultyId, rollNumbers);
+  }
+
   async getSessionReport(sessionId, facultyId) {
     return placementRepository.getSessionReport(sessionId, facultyId);
   }
@@ -92,6 +97,14 @@ class PlacementService {
 
   async deleteSession(sessionId, facultyId) {
     return placementRepository.deleteSession(sessionId, facultyId);
+  }
+
+  async getSessionPermissions(sessionId, facultyId) {
+    return placementRepository.getSessionPermissions(sessionId, facultyId);
+  }
+
+  async setSessionPermissions(sessionId, facultyId, permissions) {
+    return placementRepository.setSessionPermissions(sessionId, facultyId, permissions);
   }
 
   async submitVirtualAttendance(sessionId, rollNumber, phoneNumber) {
@@ -151,7 +164,7 @@ class PlacementService {
                            : session.attendanceMode === 'VIRTUAL' ? 'Virtual' : '-'],
       ['Venue / Link',      session.venue || '-'],
       ['Created By',        session.createdByName || '-'],
-      ['Session Status',    'Completed'],
+      ['Session Status',    session.status === 'ACTIVE' ? 'In Progress' : 'Completed'],
       ['Eligible Students', String(eligible)],
       ['Present Students',  String(present)],
       ['Absent Students',   String(absent)],

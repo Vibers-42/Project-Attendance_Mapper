@@ -63,8 +63,14 @@ class AttendanceHistoryProvider with ChangeNotifier {
     fetchSessions(refresh: true);
   }
 
+  // Bumped on every refresh so responses from superseded requests (e.g. an
+  // older filter the user already changed) are dropped instead of overwriting
+  // or being appended to the current list.
+  int _requestGen = 0;
+
   Future<void> fetchSessions({bool refresh = false}) async {
     if (refresh) {
+      _requestGen++;
       _currentPage = 1;
       _hasMore = true;
       _errorMessage = null;
@@ -74,6 +80,7 @@ class AttendanceHistoryProvider with ChangeNotifier {
 
     if (!_hasMore || _isLoadingSessions) return;
 
+    final gen = _requestGen;
     _isLoadingSessions = true;
     notifyListeners();
 
@@ -88,6 +95,7 @@ class AttendanceHistoryProvider with ChangeNotifier {
         year: _activeFilters['year'] as String?,
         subject: _activeFilters['subject'] as String?,
       );
+      if (gen != _requestGen) return; // superseded by a newer refresh
 
       if (refresh) {
         // Atomic swap: replace list only once new data arrives
@@ -103,10 +111,15 @@ class AttendanceHistoryProvider with ChangeNotifier {
       final int totalPages = response.meta['totalPages'] as int? ?? 1;
       _hasMore = _currentPage <= totalPages;
     } catch (e) {
-      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      if (gen == _requestGen) {
+        _errorMessage = e.toString().replaceAll('Exception: ', '');
+      }
     } finally {
-      _isLoadingSessions = false;
-      notifyListeners();
+      // A newer request owns the loading flag now — leave it alone.
+      if (gen == _requestGen) {
+        _isLoadingSessions = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -114,6 +127,7 @@ class AttendanceHistoryProvider with ChangeNotifier {
   // Used on screen re-entry when cached data already exists.
   Future<void> silentRefresh() async {
     if (_isLoadingSessions) return;
+    final gen = ++_requestGen;
     try {
       final response = await _queryRepository.getSessions(
         page: 1,
@@ -125,6 +139,7 @@ class AttendanceHistoryProvider with ChangeNotifier {
         year: _activeFilters['year'] as String?,
         subject: _activeFilters['subject'] as String?,
       );
+      if (gen != _requestGen) return;
       _sessions
         ..clear()
         ..addAll(response.sessions);

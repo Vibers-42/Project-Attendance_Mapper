@@ -67,6 +67,14 @@ class PlacementReportService {
     link.remove();
     window.URL.revokeObjectURL(url);
   }
+
+  /**
+   * Permanently delete a placement session with all its students and attendance.
+   */
+  async deleteReport(reportId: string): Promise<{ message: string }> {
+    const response = await apiClient.delete<{ message: string }>(`/admin/placements/reports/${reportId}`);
+    return response.data;
+  }
 }
 
 export const placementReportService = new PlacementReportService();

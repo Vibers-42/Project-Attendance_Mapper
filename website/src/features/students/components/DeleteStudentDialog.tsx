@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { studentService, Student } from '../api/studentService';
+import { studentService } from '../api/studentService';
 import { placementStudentMasterService } from '../../placements/api/placementStudentMasterService';
 import { toast } from 'sonner';
 import { Loader2, Trash2, AlertTriangle } from 'lucide-react';

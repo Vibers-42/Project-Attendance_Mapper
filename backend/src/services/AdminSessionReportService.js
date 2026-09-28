@@ -43,7 +43,9 @@ class AdminSessionReportService {
     // isTemplate sessions are Superadmin-created shared definitions with no room
     // and no records of their own — they must never be counted as a real
     // classroom session or inflate sessionCount/totalRecords here.
-    const where = { isTemplate: false };
+    // CANCELLED = faculty ended the session in the app without submitting;
+    // it has no records and shouldn't create or inflate a workbook.
+    const where = { isTemplate: false, status: { not: 'CANCELLED' } };
 
     if (topic && topic !== 'All') {
       // Match sessions whose topic field contains the keyword OR whose linked
@@ -193,6 +195,7 @@ class AdminSessionReportService {
     const where = {
       date: { gte: dayStart, lte: dayEnd },
       isTemplate: false,
+      status: { not: 'CANCELLED' },
     };
 
     // Handle null/empty topic correctly in Prisma.
@@ -458,7 +461,6 @@ class AdminSessionReportService {
     const d   = new Date(session.date);
     const dateStr      = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
     const roomName     = session.room?.name || 'N/A';
-    const topicDisplay = session.topic || this._deriveTopicFromSubject(session.subject?.name) || 'N/A';
 
     // ── 3. Build styled workbook with ExcelJS ──────────────────────────────────
     const ExcelJS  = require('exceljs');
@@ -636,7 +638,10 @@ class AdminSessionReportService {
       ? null
       : topic;
 
-    const where = { date: { gte: dayStart, lte: dayEnd } };
+    // isTemplate: false — a workbook is the faculty sessions for a class; the
+    // Superadmin template for the same day/topic/year must survive, or faculty
+    // who haven't joined yet lose the ability to join it.
+    const where = { date: { gte: dayStart, lte: dayEnd }, isTemplate: false };
     if (normTopic !== null) {
       where.OR = [
         { topic: normTopic },
@@ -653,50 +658,6 @@ class AdminSessionReportService {
     return { success: true, count };
   }
 
-  /**
-   * Derives presentCount for a session by parsing its attendance Excel file.
-   * Uses a per-request cache to ensure the same Excel file is not read multiple times during a single request.
-   * If missing, empty, or unparseable, returns 0 gracefully without throwing.
-   */
-  async _getPresentCountFromSessionExcel(sessionId, requestCache = new Map()) {
-    if (!sessionId) return 0;
-    if (requestCache.has(sessionId)) {
-      return requestCache.get(sessionId);
-    }
-
-    try {
-      const { buffer } = await this.downloadSingleSession(sessionId);
-      if (!buffer || buffer.length === 0) {
-        requestCache.set(sessionId, 0);
-        return 0;
-      }
-
-      const xlsx = require('xlsx');
-      const workbook = xlsx.read(buffer, { type: 'buffer' });
-      const sheetName = workbook.SheetNames && workbook.SheetNames[0];
-      if (!sheetName) {
-        requestCache.set(sessionId, 0);
-        return 0;
-      }
-
-      const sheet = workbook.Sheets[sheetName];
-      const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
-      if (!Array.isArray(rows) || rows.length === 0) {
-        requestCache.set(sessionId, 0);
-        return 0;
-      }
-
-      const presentCount = rows.filter(r =>
-        r && String(r['Attendance Status'] || '').trim().toUpperCase() === 'P'
-      ).length;
-
-      requestCache.set(sessionId, presentCount);
-      return presentCount;
-    } catch (err) {
-      requestCache.set(sessionId, 0);
-      return 0;
-    }
-  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // SESSION-LEVEL LISTING  (for the session-centric view tab)

@@ -44,6 +44,15 @@ const errorHandler = (err, req, res, next) => {
     });
   }
 
+  // Foreign key violation — e.g. deleting a row other records still point to,
+  // or referencing a row that doesn't exist. Not a server fault.
+  if (err.code === 'P2003') {
+    return sendError(res, {
+      message: 'This action conflicts with related records (it is still in use or refers to something that no longer exists).',
+      statusCode: 409,
+    });
+  }
+
   // Handle Prisma not found errors
   if (err.code === 'P2025') {
     return sendError(res, {

@@ -1,5 +1,4 @@
 const prisma = require('../config/prisma');
-const TimetableRepository = require('../repositories/TimetableRepository');
 const StudentRepository = require('../repositories/StudentRepository');
 const { MappingContext, MappingStatus } = require('../domain/mapping.domain');
 const { NotFoundError, ForbiddenError } = require('../utils/AppError');

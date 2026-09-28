@@ -88,6 +88,14 @@ void main() async {
 
   // Create AuthProvider before runApp so we can wire the 401 auto-logout callback.
   final authProvider = AuthProvider(authRepository);
+  final historyProvider = AttendanceHistoryProvider(queryRepository);
+  final placementProvider =
+      PlacementProvider(PlacementRepository(apiService), localPlacementRepository);
+  // Don't show the previous faculty's sessions to whoever logs in next.
+  authProvider.onLoggedOut = () {
+    historyProvider.clearHistory();
+    placementProvider.clearCachedData();
+  };
   apiService.setOnUnauthorized(() async {
     await authProvider.logout();
     navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
@@ -105,8 +113,8 @@ void main() async {
           sessionRepository,
           submissionRepository,
         )),
-        ChangeNotifierProvider(create: (_) => AttendanceHistoryProvider(queryRepository)),
-        ChangeNotifierProvider(create: (_) => PlacementProvider(PlacementRepository(apiService), localPlacementRepository)),
+        ChangeNotifierProvider.value(value: historyProvider),
+        ChangeNotifierProvider.value(value: placementProvider),
       ],
       child: const MyApp(),
     ),

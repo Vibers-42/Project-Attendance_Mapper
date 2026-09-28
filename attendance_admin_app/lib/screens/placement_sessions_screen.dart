@@ -3,7 +3,6 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../models/placement_session_model.dart';
-import '../providers/auth_provider.dart';
 import '../providers/placement_provider.dart';
 import '../utils/app_route_observer.dart';
 
@@ -284,9 +283,6 @@ class _SessionCard extends StatelessWidget {
   }
 
   void _openDetail(BuildContext context) {
-    final currentUserId =
-        Provider.of<AuthProvider>(context, listen: false).currentUser?.id;
-
     // No permission at all
     if (session.myRole == null) {
       showDialog<void>(
@@ -307,29 +303,8 @@ class _SessionCard extends StatelessWidget {
       return;
     }
 
-    // Session is live and being conducted by someone else
-    if (session.status == 'ACTIVE' &&
-        session.conductedById != null &&
-        session.conductedById != currentUserId) {
-      showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Session In Progress'),
-          content: const Text(
-            'Attendance is currently in progress by another authorized faculty. '
-            'The session will be accessible once it is completed.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
+    // Live sessions are open to every OWNER/EDITOR at once — co-faculty scan
+    // in parallel and their scans sync through the server.
     Navigator.pushNamed(
       context,
       '/placement_session_detail',
@@ -376,7 +351,7 @@ class _ActionButton extends StatelessWidget {
 
     final label = switch (session.status) {
       'COMPLETED' => 'View Report',
-      'ACTIVE' => 'Resume',
+      'ACTIVE' => session.isOwnerOrEditor ? 'Take Attendance' : 'View',
       _ => session.isOwnerOrEditor ? 'Manage' : 'View',
     };
 

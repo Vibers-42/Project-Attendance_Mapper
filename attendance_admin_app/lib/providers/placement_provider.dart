@@ -55,6 +55,17 @@ class PlacementProvider with ChangeNotifier {
   bool _isFinalizing = false;
   String? _finalizeError;
 
+  // Several OWNER/EDITOR faculty can scan the same session at once. Each
+  // phone keeps its scans locally (offline-first) and syncs them to the
+  // server in the background; students marked by other faculty are merged in.
+  final Set<String> _syncedRolls = {};
+  final Set<String> _pendingUnmarks = {};
+  Set<String> _remotePresent = {};
+  Timer? _syncTimer;
+  bool _isSyncing = false;
+  bool _syncOffline = false;
+  bool _sessionEndedRemotely = false;
+
   // ── Report state ──────────────────────────────────────────────────────────
 
   PlacementReport? _report;
@@ -99,19 +110,30 @@ class PlacementProvider with ChangeNotifier {
   // ── Getters — scanner ─────────────────────────────────────────────────────
 
   int get eligibleCount => _eligibilityMap.length;
-  int get scannedCount => _scannedRolls.length;
+  /// Present count across all faculty (this phone's scans + others').
+  int get scannedCount => _scannedRolls.length + _remotePresent.length;
   int get pendingCount => (eligibleCount - scannedCount).clamp(0, eligibleCount);
+  /// Scans made on this phone.
   List<String> get scannedRolls => List.unmodifiable(_scannedRolls);
+  /// Students marked present by other faculty on this session.
+  List<String> get otherFacultyRolls => _remotePresent.toList()..sort();
   String? get lastScanned => _lastScanned;
   bool get isLoadingEligibility => _isLoadingEligibility;
   String? get eligibilityLoadError => _eligibilityLoadError;
   bool get isFinalizing => _isFinalizing;
   String? get finalizeError => _finalizeError;
+  /// Last background sync failed — scans are safe locally and will retry.
+  bool get isSyncOffline => _syncOffline;
+  /// Another faculty finalized this session while this phone was scanning.
+  bool get sessionEndedRemotely => _sessionEndedRemotely;
+  int get unsyncedCount =>
+      _scannedRolls.where((r) => !_syncedRolls.contains(r)).length;
 
   /// Eligible students not yet scanned (will become Absent on finalization).
   List<PlacementAttendanceEntry> get pendingOfflineStudents {
     return _eligibilityMap.entries
-        .where((e) => !_scannedRolls.contains(e.key))
+        .where((e) =>
+            !_scannedRolls.contains(e.key) && !_remotePresent.contains(e.key))
         .map((e) => PlacementAttendanceEntry(
               rollNumber: e.key,
               name: e.value,
@@ -150,6 +172,27 @@ class PlacementProvider with ChangeNotifier {
 
   void clearError() {
     _errorMessage = null;
+    notifyListeners();
+  }
+
+  /// Drops everything cached for the logged-in faculty (called on logout).
+  /// Offline scans in local storage are kept so they aren't lost.
+  void clearCachedData() {
+    stopPolling();
+    _syncTimer?.cancel();
+    _syncTimer = null;
+    _sessions = [];
+    _availableFaculty = [];
+    _facultyLoaded = false;
+    _resetFormState();
+    _missingStudents = [];
+    _report = null;
+    _reportSessionId = null;
+    _virtualStudents = [];
+    _activeScanSessionId = null;
+    _eligibilityMap = {};
+    _scannedRolls = [];
+    _remotePresent = {};
     notifyListeners();
   }
 
@@ -266,6 +309,79 @@ class PlacementProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Co-faculty on an existing session ─────────────────────────────────────
+
+  bool _isLoadingPermissions = false;
+  bool get isLoadingPermissions => _isLoadingPermissions;
+  // Set while selectedPermissions holds an existing session's list rather
+  // than a new-session form's picks.
+  bool _permissionsFromSession = false;
+
+  /// Loads an existing session's co-faculty into [selectedPermissions] so the
+  /// same picker UI used at creation can edit them.
+  Future<bool> loadSessionPermissions(String sessionId) async {
+    _isLoadingPermissions = true;
+    _selectedPermissions = [];
+    _permissionsFromSession = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final rows = await _repository.getSessionPermissions(sessionId);
+      _selectedPermissions = [
+        for (final (faculty, role) in rows)
+          if (role != 'OWNER')
+            PlacementPermissionEntry(faculty: faculty, role: role),
+      ];
+      return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      return false;
+    } catch (_) {
+      _errorMessage = 'Failed to load session faculty.';
+      return false;
+    } finally {
+      _isLoadingPermissions = false;
+      notifyListeners();
+    }
+  }
+
+  /// Saves [selectedPermissions] as the session's co-faculty (owner only).
+  Future<bool> saveSessionPermissions(String sessionId) async {
+    if (_isLoading) return false;
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      await _repository.setSessionPermissions(sessionId, [
+        for (final p in _selectedPermissions)
+          {'facultyId': p.faculty.id, 'role': p.role},
+      ]);
+      _sessions = [];
+      return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      return false;
+    } catch (_) {
+      _errorMessage = 'Failed to update session faculty.';
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  void clearSelectedPermissions() {
+    _selectedPermissions = [];
+    _permissionsFromSession = false;
+    notifyListeners();
+  }
+
+  /// Called when opening a blank create form: drops a list left over from
+  /// editing an existing session, but keeps the user's own in-progress picks.
+  void discardSessionPermissions() {
+    if (_permissionsFromSession) clearSelectedPermissions();
+  }
+
   // ── Session creation ──────────────────────────────────────────────────────
 
   Future<PlacementSessionModel?> createSession({
@@ -313,18 +429,32 @@ class PlacementProvider with ChangeNotifier {
   void _resetFormState() {
     _parsedStudents = [];
     _selectedPermissions = [];
+    _permissionsFromSession = false;
   }
 
   // ── Scanner ───────────────────────────────────────────────────────────────
 
   Future<void> initScanner(String sessionId) async {
+    stopScannerSync();
     _activeScanSessionId = sessionId;
     _eligibilityLoadError = null;
     _isLoadingEligibility = true;
+    _syncedRolls.clear();
+    _pendingUnmarks.clear();
+    _remotePresent = {};
+    _syncOffline = false;
+    _sessionEndedRemotely = false;
     notifyListeners();
 
+    _scannedRolls = _localRepository.loadScans(sessionId);
+    _lastScanned = _scannedRolls.isNotEmpty ? _scannedRolls.first : null;
+
     try {
-      _eligibilityMap = await _repository.getEligibilityMap(sessionId);
+      final state = await _repository.getLiveState(sessionId);
+      _eligibilityMap = {
+        for (final s in state.students) s.rollNumber.toUpperCase(): s.name,
+      };
+      _applyLiveState(state);
     } on ApiException catch (e) {
       _eligibilityLoadError = e.message;
       _eligibilityMap = {};
@@ -334,10 +464,14 @@ class PlacementProvider with ChangeNotifier {
     } finally {
       _isLoadingEligibility = false;
     }
-
-    _scannedRolls = _localRepository.loadScans(sessionId);
-    _lastScanned = _scannedRolls.isNotEmpty ? _scannedRolls.first : null;
     notifyListeners();
+
+    if (_eligibilityLoadError == null) {
+      // Push any scans left over from an earlier visit, then keep syncing.
+      _syncScans();
+      _syncTimer = Timer.periodic(
+          const Duration(seconds: 6), (_) => _syncScans());
+    }
   }
 
   Future<void> retryInitScanner() async {
@@ -348,15 +482,23 @@ class PlacementProvider with ChangeNotifier {
   String? addScan(String rawRollNumber) {
     final roll = rawRollNumber.trim().toUpperCase();
     if (roll.isEmpty) return 'Invalid roll number.';
+    if (_sessionEndedRemotely) {
+      return 'Session was finalized by another faculty.';
+    }
     if (!_eligibilityMap.containsKey(roll)) return 'Not in eligibility list.';
     if (_scannedRolls.contains(roll)) return 'Already scanned: $roll';
+    if (_remotePresent.contains(roll)) {
+      return 'Already marked by another faculty: $roll';
+    }
 
     _scannedRolls = [roll, ..._scannedRolls];
     _lastScanned = roll;
+    _pendingUnmarks.remove(roll);
     if (_activeScanSessionId != null) {
       _localRepository.saveScans(_activeScanSessionId!, _scannedRolls);
     }
     notifyListeners();
+    _syncScans();
     return null;
   }
 
@@ -364,18 +506,84 @@ class PlacementProvider with ChangeNotifier {
     final roll = rollNumber.toUpperCase();
     _scannedRolls = _scannedRolls.where((r) => r != roll).toList();
     _lastScanned = _scannedRolls.isNotEmpty ? _scannedRolls.first : null;
+    // Always queue an unmark: the scan may have synced (or be mid-sync), and
+    // unmarking a student who isn't PRESENT on the server is a no-op.
+    _syncedRolls.remove(roll);
+    _pendingUnmarks.add(roll);
     if (_activeScanSessionId != null) {
       _localRepository.saveScans(_activeScanSessionId!, _scannedRolls);
     }
     notifyListeners();
+    _syncScans();
+  }
+
+  void _applyLiveState(PlacementLiveState state) {
+    _remotePresent = {
+      for (final s in state.students)
+        if (s.isPresent &&
+            !_scannedRolls.contains(s.rollNumber.toUpperCase()) &&
+            !_pendingUnmarks.contains(s.rollNumber.toUpperCase()))
+          s.rollNumber.toUpperCase(),
+    };
+    if (state.sessionStatus == 'COMPLETED') _sessionEndedRemotely = true;
+  }
+
+  /// Pushes unsynced scans/removals, then pulls other faculty's scans.
+  /// Failures are silent — scans stay in local storage and retry next tick.
+  Future<void> _syncScans() async {
+    final sessionId = _activeScanSessionId;
+    if (sessionId == null || _isSyncing) return;
+    _isSyncing = true;
+    try {
+      final toMark =
+          _scannedRolls.where((r) => !_syncedRolls.contains(r)).toList();
+      if (toMark.isNotEmpty) {
+        await _repository.markAttendance(sessionId, toMark);
+        // Only count them synced if they weren't removed mid-request.
+        _syncedRolls.addAll(toMark.where(_scannedRolls.contains));
+      }
+      final toUnmark = _pendingUnmarks.toList();
+      if (toUnmark.isNotEmpty && !_sessionEndedRemotely) {
+        await _repository.unmarkAttendance(sessionId, toUnmark);
+        _pendingUnmarks.removeAll(toUnmark);
+      }
+      final state = await _repository.getLiveState(sessionId);
+      if (_activeScanSessionId != sessionId) return;
+      _applyLiveState(state);
+      _syncOffline = false;
+      if (_sessionEndedRemotely && unsyncedCount == 0) {
+        _syncTimer?.cancel();
+        _syncTimer = null;
+      }
+    } catch (e) {
+      debugPrint('[PlacementProvider] scan sync failed: $e');
+      _syncOffline = true;
+    } finally {
+      _isSyncing = false;
+      if (_activeScanSessionId == sessionId) notifyListeners();
+    }
+  }
+
+  /// Stops background sync when the scanner closes, making one last attempt
+  /// to push anything still unsynced.
+  void stopScannerSync() {
+    _syncTimer?.cancel();
+    _syncTimer = null;
+    if (_activeScanSessionId != null &&
+        (unsyncedCount > 0 || _pendingUnmarks.isNotEmpty)) {
+      _syncScans();
+    }
   }
 
   void resetScannerState() {
+    stopScannerSync();
     _activeScanSessionId = null;
     _eligibilityMap = {};
     _scannedRolls = [];
     _lastScanned = null;
     _eligibilityLoadError = null;
+    _remotePresent = {};
+    _sessionEndedRemotely = false;
     notifyListeners();
   }
 
@@ -387,7 +595,15 @@ class PlacementProvider with ChangeNotifier {
     _finalizeError = null;
     notifyListeners();
     try {
+      // Removed scans must be un-marked before finalizing, or they'd lock in
+      // as PRESENT. (New scans are covered by passing rollNumbers below.)
+      if (_pendingUnmarks.isNotEmpty) {
+        await _repository.unmarkAttendance(sessionId, _pendingUnmarks.toList());
+        _pendingUnmarks.clear();
+      }
       await _repository.finalizeSession(sessionId, rollNumbers);
+      _syncTimer?.cancel();
+      _syncTimer = null;
       _localRepository.clearScans(sessionId);
       stopPolling();
       // Invalidate session list so the detail screen shows COMPLETED status.
@@ -398,6 +614,8 @@ class PlacementProvider with ChangeNotifier {
       _scannedRolls = [];
       _lastScanned = null;
       _eligibilityLoadError = null;
+      _syncedRolls.clear();
+      _remotePresent = {};
       _reportSessionId = null;
       _report = null;
       _virtualStudents = [];

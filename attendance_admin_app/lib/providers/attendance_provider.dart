@@ -83,6 +83,19 @@ class AttendanceProvider with ChangeNotifier {
     }
   }
 
+  /// Fetches the student roster for scan validation. getValidStudents()
+  /// returns {} on any network error, so fall back to the cached roster
+  /// rather than leaving the scanner with nothing to validate against.
+  Future<void> _loadRoster() async {
+    final fresh = await _sessionRepository.getValidStudents();
+    if (fresh.isNotEmpty) {
+      _validStudents = fresh;
+      _localRepository.saveValidStudents(fresh);
+    } else {
+      _validStudents = _localRepository.loadValidStudents();
+    }
+  }
+
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
@@ -113,10 +126,7 @@ class AttendanceProvider with ChangeNotifier {
       final sessionModel = await _sessionRepository.createSession(sessionData);
 
       // Fetch the valid students for client-side validation
-      _validStudents = await _sessionRepository.getValidStudents();
-      if (_validStudents.isNotEmpty) {
-        _localRepository.saveValidStudents(_validStudents);
-      }
+      await _loadRoster();
 
       // 2. Initialize locally with the generated backend sessionId
       _sessionId = sessionModel.id;
@@ -221,10 +231,7 @@ class AttendanceProvider with ChangeNotifier {
       final sessionModel =
           await _sessionRepository.joinTemplate(templateId, roomNumber);
 
-      _validStudents = await _sessionRepository.getValidStudents();
-      if (_validStudents.isNotEmpty) {
-        _localRepository.saveValidStudents(_validStudents);
-      }
+      await _loadRoster();
 
       _sessionId = sessionModel.id;
       _professorName = professorName;
@@ -508,6 +515,13 @@ class AttendanceProvider with ChangeNotifier {
   }
 
   void discardSession() {
+    // Best-effort: mark it CANCELLED so the website doesn't show an empty
+    // session. Failure (e.g. offline) is fine — local state is cleared anyway.
+    final id = _sessionId;
+    if (id != null) {
+      _sessionRepository.cancelSession(id).catchError(
+          (e) => debugPrint('[AttendanceProvider] cancelSession failed: $e'));
+    }
     _clearSessionState();
     notifyListeners();
   }

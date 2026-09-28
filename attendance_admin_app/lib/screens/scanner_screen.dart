@@ -49,7 +49,32 @@ class ScannerScreen extends StatelessWidget {
     final result = await _confirmBack(context);
     if (!context.mounted) return;
     if (result == 'end') {
-      Provider.of<AttendanceProvider>(context, listen: false).discardSession();
+      final provider = Provider.of<AttendanceProvider>(context, listen: false);
+      // Ending throws away every scan — make that an explicit second choice.
+      if (provider.presentCount > 0) {
+        final sure = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('End Without Submitting?'),
+            content: Text(
+                '${provider.presentCount} scanned student(s) will be discarded and '
+                'this session will be cancelled. To keep them, go back and tap Submit.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Keep Session'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Discard Scans'),
+              ),
+            ],
+          ),
+        );
+        if (sure != true || !context.mounted) return;
+      }
+      provider.discardSession();
       Navigator.of(context).pop();
     } else if (result == 'back') {
       Navigator.of(context).pop();
@@ -918,7 +943,7 @@ class _LiveAttendanceTabState extends State<LiveAttendanceTab> {
             children: [
               Text(
                 'The following students have already been marked present '
-                'in another active session.',
+                'in another room for this class.',
                 style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
               ),
               const SizedBox(height: 14),

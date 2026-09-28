@@ -6,7 +6,8 @@ class AdminStatsController {
     const [studentCount, facultyCount, sessionCount] = await Promise.all([
       prisma.student.count(),
       prisma.faculty.count(),
-      prisma.attendanceSession.count(),
+      // Same rule as the reports pages: templates and cancelled sessions aren't real classes.
+      prisma.attendanceSession.count({ where: { isTemplate: false, status: { not: 'CANCELLED' } } }),
     ]);
     return sendSuccess(res, {
       message: 'Stats retrieved successfully.',

@@ -16,6 +16,13 @@ class PlacementParseResult {
   PlacementParseResult(this.students, this.missingStudents);
 }
 
+/// Server-side view of a live session, used to merge co-faculty scans.
+class PlacementLiveState {
+  final String? sessionStatus;
+  final List<PlacementAttendanceEntry> students;
+  PlacementLiveState(this.sessionStatus, this.students);
+}
+
 class PlacementRepository {
   final ApiService _apiService;
 
@@ -134,17 +141,21 @@ class PlacementRepository {
     }
   }
 
-  Future<Map<String, String>> getEligibilityMap(String sessionId) async {
+  Future<PlacementLiveState> getLiveState(String sessionId) async {
     try {
       final response = await _apiService.client
           .get(ApiConstants.placementSessionStudents(sessionId));
       final authResponse = AuthResponseModel.fromJson(response.data);
       if (authResponse.success && authResponse.dataAsMap != null) {
-        final list = authResponse.dataAsMap!['students'] as List<dynamic>;
-        return {
-          for (final s in list)
-            (s['rollNumber'] as String).toUpperCase(): s['name'] as String,
-        };
+        final data = authResponse.dataAsMap!;
+        final list = data['students'] as List<dynamic>;
+        return PlacementLiveState(
+          data['sessionStatus'] as String?,
+          list
+              .map((e) =>
+                  PlacementAttendanceEntry.fromJson(e as Map<String, dynamic>))
+              .toList(),
+        );
       }
       throw ApiException(authResponse.message);
     } on DioException catch (e) {
@@ -153,6 +164,76 @@ class PlacementRepository {
       if (e is ApiException) rethrow;
       throw ApiException(e.toString());
     }
+  }
+
+  /// Marks roll numbers PRESENT on the server (idempotent).
+  Future<void> markAttendance(String sessionId, List<String> rollNumbers) =>
+      _postRolls(ApiConstants.placementSessionAttendance(sessionId), rollNumbers);
+
+  /// Reverts synced roll numbers back to PENDING on the server.
+  Future<void> unmarkAttendance(String sessionId, List<String> rollNumbers) =>
+      _postRolls(
+          ApiConstants.placementSessionAttendanceRemove(sessionId), rollNumbers);
+
+  Future<void> _postRolls(String path, List<String> rollNumbers) async {
+    try {
+      final response = await _apiService.client
+          .post(path, data: {'rollNumbers': rollNumbers});
+      final authResponse = AuthResponseModel.fromJson(response.data);
+      if (!authResponse.success) throw ApiException(authResponse.message);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString());
+    }
+  }
+
+  /// Faculty with access to a session, each as (faculty, permission role).
+  Future<List<(FacultyModel, String)>> getSessionPermissions(
+      String sessionId) async {
+    try {
+      final response = await _apiService.client
+          .get(ApiConstants.placementSessionPermissions(sessionId));
+      return _parsePermissions(response.data);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString());
+    }
+  }
+
+  /// Replaces the co-faculty (EDITOR/VIEWER) list. Owner only.
+  Future<List<(FacultyModel, String)>> setSessionPermissions(
+      String sessionId, List<Map<String, String>> permissions) async {
+    try {
+      final response = await _apiService.client.put(
+        ApiConstants.placementSessionPermissions(sessionId),
+        data: {'permissions': permissions},
+      );
+      return _parsePermissions(response.data);
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException(e.toString());
+    }
+  }
+
+  List<(FacultyModel, String)> _parsePermissions(dynamic body) {
+    final authResponse = AuthResponseModel.fromJson(body);
+    if (authResponse.success && authResponse.dataAsMap != null) {
+      final list = authResponse.dataAsMap!['faculty'] as List<dynamic>;
+      return list.map((e) {
+        final m = e as Map<String, dynamic>;
+        return (
+          FacultyModel.fromJson({...m, 'role': 'FACULTY'}),
+          m['role'] as String,
+        );
+      }).toList();
+    }
+    throw ApiException(authResponse.message);
   }
 
   Future<PlacementReport> getReport(String sessionId) async {

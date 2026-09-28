@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { sessionReportService, WorkbookRecord, WorkbookFilters } from '../api/workbookService';
-import { placementReportService, PlacementReportRecord, PlacementReportFilters } from '../../placements/api/placementReportService';
+import { placementReportService, PlacementReportRecord } from '../../placements/api/placementReportService';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -105,32 +105,36 @@ function useVirtualScroll(items: any[]) {
   return { ref, totalH, visible, offsetTop, start, scrollbarWidth };
 }
 
-// ─── Workbook Delete Confirm Dialog ─────────────────────────────────────────
+// ─── Delete Confirm Dialog (workbooks + placement reports) ────────────────────
+interface DeleteTarget {
+  heading: string;
+  description: string;
+  name: string;
+  detail: string;
+}
 interface DeleteWorkbookDialogProps {
-  workbook: WorkbookRecord | null;
+  target: DeleteTarget | null;
   onClose: () => void;
   onConfirm: () => void;
   isPending: boolean;
 }
-function DeleteWorkbookDialog({ workbook, onClose, onConfirm, isPending }: DeleteWorkbookDialogProps) {
-  if (!workbook) return null;
+function DeleteWorkbookDialog({ target, onClose, onConfirm, isPending }: DeleteWorkbookDialogProps) {
+  if (!target) return null;
   return (
-    <Dialog open={!!workbook} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={!!target} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-500">
             <AlertTriangle className="w-5 h-5" />
-            Delete Workbook
+            {target.heading}
           </DialogTitle>
-          <DialogDescription>This will permanently delete all sessions in this class.</DialogDescription>
+          <DialogDescription>{target.description}</DialogDescription>
         </DialogHeader>
         <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-5 py-4 space-y-2">
           <p className="text-sm font-semibold text-red-700 dark:text-red-400">
-            Are you sure you want to delete <span className="font-bold">{workbook.workbookName}</span>?
+            Are you sure you want to delete <span className="font-bold">{target.name}</span>?
           </p>
-          <p className="text-xs text-red-600 dark:text-red-400">
-            This will delete {workbook.sessionCount} session{workbook.sessionCount !== 1 ? 's' : ''} and all their attendance records permanently.
-          </p>
+          <p className="text-xs text-red-600 dark:text-red-400">{target.detail}</p>
         </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
@@ -183,26 +187,50 @@ export function WorkbookTable({ moduleType = 'attendance' }: WorkbookTableProps)
   const [filters, setFilters]     = useState<WorkbookFilters>({});
   const [noRecordsOpen, setNoRecordsOpen]         = useState(false);
   const [downloadingId, setDownloadingId]         = useState<string | null>(null);
-  const [deleteWorkbookTarget, setDeleteWorkbookTarget] = useState<WorkbookRecord | null>(null);
+  // Row pending delete confirmation — a WorkbookRecord, or a PlacementReportRecord in placement mode.
+  const [deleteTarget, setDeleteTarget] = useState<WorkbookRecord | PlacementReportRecord | null>(null);
 
   const isPlacement = moduleType === 'placement';
   const queryKey = isPlacement ? 'admin-placement-reports' : 'admin-workbooks';
   const COLS = isPlacement ? PLACEMENT_COLS : BASE_COLS;
 
-  const deleteWorkbookMutation = useMutation({
-    mutationFn: (wb: WorkbookRecord) => sessionReportService.deleteWorkbook(wb),
+  const deleteMutation = useMutation({
+    mutationFn: (row: WorkbookRecord | PlacementReportRecord): Promise<{ message?: string }> =>
+      isPlacement
+        ? placementReportService.deleteReport(row.id)
+        : sessionReportService.deleteWorkbook(row as WorkbookRecord),
     onSuccess: (res) => {
-      // Invalidate BOTH views: workbook list recomputes, session list removes deleted sessions
-      queryClient.invalidateQueries({ queryKey: ['admin-workbooks'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-raw-sessions'] });
-      toast.success(res.message || 'Workbook and all its sessions deleted successfully.');
-      setDeleteWorkbookTarget(null);
+      if (isPlacement) {
+        queryClient.invalidateQueries({ queryKey: ['admin-placement-reports'] });
+      } else {
+        // Invalidate BOTH views: workbook list recomputes, session list removes deleted sessions
+        queryClient.invalidateQueries({ queryKey: ['admin-workbooks'] });
+        queryClient.invalidateQueries({ queryKey: ['admin-raw-sessions'] });
+      }
+      toast.success(res?.message || (isPlacement ? 'Placement report deleted successfully.' : 'Workbook and all its sessions deleted successfully.'));
+      setDeleteTarget(null);
     },
     onError: (err: any) => {
-      const msg = err?.response?.data?.message || err.message || 'Failed to delete workbook.';
+      const msg = err?.response?.data?.message || err.message || (isPlacement ? 'Failed to delete report.' : 'Failed to delete workbook.');
       toast.error('Delete failed', { description: msg });
     },
   });
+
+  const deleteDialogTarget: DeleteTarget | null = !deleteTarget
+    ? null
+    : 'title' in deleteTarget
+      ? {
+          heading: 'Delete Placement Report',
+          description: 'This will permanently delete this placement drive.',
+          name: deleteTarget.title,
+          detail: 'The session, its eligible student list and all attendance records will be deleted permanently. This also removes it from the app.',
+        }
+      : {
+          heading: 'Delete Workbook',
+          description: 'This will permanently delete all sessions in this class.',
+          name: deleteTarget.workbookName,
+          detail: `This will delete ${deleteTarget.sessionCount} session${deleteTarget.sessionCount !== 1 ? 's' : ''} and all their attendance records permanently.`,
+        };
 
   // Reset page when filters/search change
   useEffect(() => {
@@ -270,8 +298,9 @@ export function WorkbookTable({ moduleType = 'attendance' }: WorkbookTableProps)
 
   // ── Download handler ────────────────────────────────────────────────────────
   const handleDownload = async (workbook: any) => {
-    const presentCount = isPlacement ? workbook.presentCount : workbook.totalRecords;
-    if (presentCount === 0) {
+    // Placement reports are still useful with 0 present (the Absent sheet lists
+    // every eligible student), so only attendance workbooks are blocked here.
+    if (!isPlacement && workbook.totalRecords === 0) {
       setNoRecordsOpen(true);
       return;
     }
@@ -312,14 +341,12 @@ export function WorkbookTable({ moduleType = 'attendance' }: WorkbookTableProps)
   return (
     <div className="space-y-3">
       <NoRecordsModal open={noRecordsOpen} onClose={() => setNoRecordsOpen(false)} />
-      {!isPlacement && (
-        <DeleteWorkbookDialog
-          workbook={deleteWorkbookTarget}
-          onClose={() => setDeleteWorkbookTarget(null)}
-          onConfirm={() => deleteWorkbookMutation.mutate(deleteWorkbookTarget!)}
-          isPending={deleteWorkbookMutation.isPending}
-        />
-      )}
+      <DeleteWorkbookDialog
+        target={deleteDialogTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
+        isPending={deleteMutation.isPending}
+      />
 
       {/* ── Toolbar ────────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
@@ -579,16 +606,14 @@ export function WorkbookTable({ moduleType = 'attendance' }: WorkbookTableProps)
                               {isDownloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                             </Button>
 
-                            {!isPlacement && (
-                              <Button
-                                variant="outline" size="icon"
-                                className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                onClick={() => setDeleteWorkbookTarget(workbook)}
-                                title="Delete all sessions in this class"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
+                            <Button
+                              variant="outline" size="icon"
+                              className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                              onClick={() => setDeleteTarget(workbook)}
+                              title={isPlacement ? 'Delete placement report' : 'Delete all sessions in this class'}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
                           </div>
                         </td>
                       </tr>

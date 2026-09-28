@@ -41,10 +41,17 @@ class AttendanceSessionRepository {
    * "Active Sessions" source of truth for both Superadmin and Faculty views.
    */
   async findTemplates() {
+    // Templates are never closed, so without a date bound the faculty "join"
+    // list grows forever with past days (and joining one would create a
+    // session dated in the past). Keep from the start of yesterday (UTC) so
+    // timezone offsets and late-evening classes are still covered.
+    const now = new Date();
+    const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
     return prisma.attendanceSession.findMany({
       where: {
         isTemplate: true,
         status: { in: ['CREATED', 'ACTIVE'] },
+        date: { gte: since },
       },
       orderBy: { date: 'asc' },
       include: SESSION_INCLUDE,

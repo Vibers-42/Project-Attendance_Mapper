@@ -235,6 +235,18 @@ class AttendanceService {
     return sessionRepository.update(sessionId, { status: 'CANCELLED' });
   }
 
+  /**
+   * The app submits once, then clears its local session — so a successful
+   * submit ends the session. Without this, sessions stayed CREATED forever.
+   */
+  async _markSubmitted(tx, sessionId, currentStatus) {
+    if (currentStatus === 'COMPLETED') return;
+    await tx.attendanceSession.update({
+      where: { id: sessionId },
+      data:  { status: 'COMPLETED' },
+    });
+  }
+
   async submitAttendance(sessionId, facultyId, studentRollNumbers, confirmed = false) {
     const uniqueRollNumbers = [...new Set(studentRollNumbers)];
     if (uniqueRollNumbers.length === 0) return { count: 0, skipped: [] };
@@ -251,28 +263,42 @@ class AttendanceService {
         // ── 1. Verify session ownership and status ─────────────────────────
         const current = await tx.attendanceSession.findUnique({
           where: { id: sessionId },
-          select: { status: true, facultyId: true },
+          select: {
+            status: true, facultyId: true, date: true,
+            academicYearId: true, subjectId: true, topic: true,
+          },
         });
 
         if (!current) throw new NotFoundError('Attendance session not found.');
         if (current.facultyId !== facultyId) {
           throw new ForbiddenError('You do not have permission to submit to this session.');
         }
-        if (current.status === 'COMPLETED' || current.status === 'CANCELLED') {
-          throw new ConflictError(
-            `Cannot submit attendance to a ${current.status.toLowerCase()} session.`
-          );
+        // COMPLETED is allowed: the app retries a submit whose success reply
+        // was lost, and records are inserted with skipDuplicates below.
+        if (current.status === 'CANCELLED') {
+          throw new ConflictError('Cannot submit attendance to a cancelled session.');
         }
 
         // ── 2. Cross-session conflict check ────────────────────────────────
-        // Find any record where the studentRollNumber is in our batch AND it
-        // belongs to a DIFFERENT session that is still CREATED or ACTIVE.
+        // A student may be present only once per class — i.e. per workbook:
+        // same calendar day (UTC, as workbooks group), academic year, subject
+        // and topic. Scoping by class instead of by session status means past
+        // classes never conflict, and a room that already submitted still
+        // blocks the same student being counted again in another room.
+        const d = new Date(current.date);
+        const dayStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+        const dayEnd   = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
         const conflictingRecords = await tx.attendanceRecord.findMany({
           where: {
             studentRollNumber: { in: uniqueRollNumbers },
             sessionId:         { not: sessionId },
             session: {
-              status: { in: ['CREATED', 'ACTIVE'] },
+              status:         { not: 'CANCELLED' },
+              isTemplate:     false,
+              date:           { gte: dayStart, lte: dayEnd },
+              academicYearId: current.academicYearId,
+              subjectId:      current.subjectId,
+              topic:          current.topic,
             },
           },
           select: {
@@ -303,7 +329,7 @@ class AttendanceService {
               `${conflictRolls.length === 1
                 ? `Roll number ${conflictRolls[0]} is`
                 : `Roll numbers ${conflictRolls.join(', ')} are`
-              } already present in another active session.`,
+              } already marked present in another room for this class.`,
               conflicts
             );
           }
@@ -318,17 +344,16 @@ class AttendanceService {
           const toInsert = uniqueRollNumbers.filter((r) => !conflictingRollSet.has(r));
           const skipped  = [...conflictingRollSet];
 
-          if (toInsert.length === 0) {
-            // Every submitted student was a conflict — nothing to insert.
-            return { count: 0, skipped };
+          let count = 0;
+          if (toInsert.length > 0) {
+            const insertResult = await tx.attendanceRecord.createMany({
+              data: toInsert.map((r) => ({ sessionId, studentRollNumber: r })),
+              skipDuplicates: true,
+            });
+            count = insertResult.count;
           }
-
-          const insertResult = await tx.attendanceRecord.createMany({
-            data: toInsert.map((r) => ({ sessionId, studentRollNumber: r })),
-            skipDuplicates: true,
-          });
-
-          return { count: insertResult.count, skipped };
+          await this._markSubmitted(tx, sessionId, current.status);
+          return { count, skipped };
         }
 
         // ── 4. No conflicts — insert all ───────────────────────────────────
@@ -336,6 +361,7 @@ class AttendanceService {
           data: uniqueRollNumbers.map((r) => ({ sessionId, studentRollNumber: r })),
           skipDuplicates: true,
         });
+        await this._markSubmitted(tx, sessionId, current.status);
 
         return { count: insertResult.count, skipped: [] };
       }, {

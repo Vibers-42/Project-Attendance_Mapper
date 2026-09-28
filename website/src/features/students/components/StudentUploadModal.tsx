@@ -89,7 +89,7 @@ export function StudentUploadModal({ isOpen, onClose, moduleType = 'attendance' 
 
         // Just take first 5 rows for preview
         setPreviewData(rawData.slice(0, 5));
-      } catch (err) {
+      } catch {
         setError('Failed to parse Excel file preview. Please ensure it is a valid format.');
       }
     };
@@ -275,7 +275,7 @@ export function StudentUploadModal({ isOpen, onClose, moduleType = 'attendance' 
           {file && (
             <Button
               onClick={() => uploadMutation.mutate()}
-              disabled={uploadMutation.isPending || !!error || (!isPlacement && !selectedYear)}
+              disabled={uploadMutation.isPending || !!error || !canUpload}
               className="bg-blue-600 hover:bg-blue-700 text-white"
               title={(!isPlacement && !selectedYear) ? 'Select a year first' : undefined}
             >

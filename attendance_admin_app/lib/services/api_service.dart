@@ -69,9 +69,11 @@ class _AuthInterceptor extends Interceptor {
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     final isLoginRequest = err.requestOptions.path.contains('/auth/login');
     final status = err.response?.statusCode;
-    // 401 = token missing/expired/revoked; 403 = account deactivated/role changed.
-    // Both require clearing credentials and forcing re-login.
-    if ((status == 401 || status == 403) && !isLoginRequest) {
+    // 401 = token missing/expired/invalid or account deactivated → force re-login.
+    // 403 is NOT a session problem: the backend uses it for per-resource rules
+    // ("only the owner can delete this session"), so the screen should show the
+    // message instead of logging the faculty out.
+    if (status == 401 && !isLoginRequest) {
       await _storageService?.clearAll();
       await _onUnauthorized?.call();
     }

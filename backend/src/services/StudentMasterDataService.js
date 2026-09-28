@@ -119,7 +119,7 @@ class StudentMasterDataService {
       academicYearId = yr?.id ?? null;
     }
 
-    const { count, updateCount, newStudents } = await StudentRepository.upsertStudents(parsedStudents, academicYearId);
+    const { count, updateCount } = await StudentRepository.upsertStudents(parsedStudents, academicYearId);
     const skippedCount = parsedStudents.length - count - updateCount;
 
     const parts = [];

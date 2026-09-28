@@ -24,6 +24,8 @@ class ApiConstants {
   static String placementSessionStart(String id) => '/placement/sessions/$id/start';
   static String placementSessionStudents(String id) => '/placement/sessions/$id/students';
   static String placementSessionAttendance(String id) => '/placement/sessions/$id/attendance';
+  static String placementSessionAttendanceRemove(String id) => '/placement/sessions/$id/attendance/remove';
+  static String placementSessionPermissions(String id) => '/placement/sessions/$id/permissions';
   static String placementSessionFinalize(String id) => '/placement/sessions/$id/finalize';
   static String placementSessionReport(String id) => '/placement/sessions/$id/report';
   static String placementSessionReportExcel(String id) => '/placement/sessions/$id/report/excel';

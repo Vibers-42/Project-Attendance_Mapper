@@ -43,13 +43,14 @@ export function AddStudentModal({ isOpen, onClose, moduleType = 'attendance' }: 
   const serviceToUse = isPlacement ? placementStudentMasterService : studentService;
 
   const addMutation = useMutation({
-    mutationFn: () =>
+    // serviceToUse is a union of two services, so annotate the result type.
+    mutationFn: (): Promise<unknown> =>
       serviceToUse.addStudent({
         rollNumber: form.rollNumber.trim().toUpperCase(),
         name: form.name.trim(),
         timetable: form.timetable.trim(),
       }),
-    onSuccess: (student: any) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [queryKey] });
       toast.success(`Student "${form.rollNumber.trim().toUpperCase()}" added to Master Data.`);
       handleClose();

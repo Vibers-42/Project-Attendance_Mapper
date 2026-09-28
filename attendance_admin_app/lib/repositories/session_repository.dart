@@ -126,6 +126,16 @@ class SessionRepository {
     }
   }
 
+  /// Marks a session CANCELLED on the server (used when faculty end a session
+  /// without submitting), so it doesn't linger as an empty "active" session.
+  Future<void> cancelSession(String sessionId) async {
+    try {
+      await _apiService.client.post('${ApiConstants.sessions}/$sessionId/cancel');
+    } on DioException catch (e) {
+      throw ApiException.fromDioException(e);
+    }
+  }
+
   Future<Map<String, String>> getValidStudents() async {
     try {
       final response = await _apiService.client.get(ApiConstants.studentScanMap);

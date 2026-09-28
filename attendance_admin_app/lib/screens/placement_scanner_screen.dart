@@ -53,6 +53,7 @@ class _PlacementScannerScreenState extends State<PlacementScannerScreen> {
   @override
   void dispose() {
     _provider?.stopPolling();
+    if (!_isVirtual) _provider?.stopScannerSync();
     super.dispose();
   }
 
@@ -70,7 +71,8 @@ class _PlacementScannerScreenState extends State<PlacementScannerScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Leave Scanner?'),
         content: const Text(
-            'Your scans are saved locally. You can return to submit them later.'),
+            'Your scans are saved on this phone and sync to the session automatically. '
+            'You can come back to scan more or finalize later.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -674,6 +676,51 @@ class _LiveAttendanceTabState extends State<_LiveAttendanceTab> {
           },
         ),
 
+        // Sync status — co-faculty scans flow through the server
+        Selector<PlacementProvider,
+            ({bool ended, bool offline, int unsynced})>(
+          selector: (_, p) => (
+            ended: p.sessionEndedRemotely,
+            offline: p.isSyncOffline,
+            unsynced: p.unsyncedCount,
+          ),
+          builder: (context, s, _) {
+            final (IconData icon, String text, Color color)? banner = s.ended
+                ? (
+                    Icons.lock_outline,
+                    s.unsynced > 0
+                        ? 'Finalized by another faculty. Syncing your last ${s.unsynced} scan(s)…'
+                        : 'Finalized by another faculty. Your scans are saved.',
+                    Colors.green.shade700,
+                  )
+                : s.offline
+                    ? (
+                        Icons.cloud_off_outlined,
+                        'Offline — ${s.unsynced} scan(s) saved on this phone, will sync when back online.',
+                        Colors.orange.shade800,
+                      )
+                    : null;
+            if (banner == null) return const SizedBox.shrink();
+            final (icon, text, color) = banner;
+            return Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: color.withValues(alpha: 0.1),
+              child: Row(
+                children: [
+                  Icon(icon, size: 16, color: color),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(text,
+                        style: TextStyle(fontSize: 12, color: color)),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+
         // Search bar
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -699,14 +746,15 @@ class _LiveAttendanceTabState extends State<_LiveAttendanceTab> {
           ),
         ),
 
-        // Scanned list
+        // Scanned list — this phone's scans first, then other faculty's
         Expanded(
-          child: Selector<PlacementProvider, List<String>>(
-            selector: (_, p) => p.scannedRolls,
-            builder: (context, rolls, _) {
-              final provider =
-                  Provider.of<PlacementProvider>(context, listen: false);
-              final filtered = rolls
+          child: Consumer<PlacementProvider>(
+            builder: (context, provider, _) {
+              final mine = provider.scannedRolls.toSet();
+              final filtered = [
+                ...provider.scannedRolls,
+                ...provider.otherFacultyRolls,
+              ]
                   .where((r) =>
                       r.contains(_searchQuery.toUpperCase()))
                   .toList();
@@ -730,6 +778,7 @@ class _LiveAttendanceTabState extends State<_LiveAttendanceTab> {
                 itemBuilder: (context, index) {
                   final roll = filtered[index];
                   final name = provider.getStudentName(roll) ?? '';
+                  final isMine = mine.contains(roll);
                   return Card(
                     margin: const EdgeInsets.only(bottom: 8),
                     elevation: 1,
@@ -747,16 +796,21 @@ class _LiveAttendanceTabState extends State<_LiveAttendanceTab> {
                             fontWeight: FontWeight.bold,
                             letterSpacing: 1),
                       ),
-                      subtitle: name.isNotEmpty ? Text(name) : null,
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline,
-                            color: Colors.red),
-                        tooltip: 'Remove',
-                        onPressed: () =>
-                            Provider.of<PlacementProvider>(context,
-                                    listen: false)
-                                .removeScan(roll),
-                      ),
+                      subtitle: Text(isMine
+                          ? name
+                          : [if (name.isNotEmpty) name, 'Marked by another faculty']
+                              .join(' · ')),
+                      // Only this phone's own scans can be removed here.
+                      trailing: isMine && !provider.sessionEndedRemotely
+                          ? IconButton(
+                              icon: const Icon(Icons.delete_outline,
+                                  color: Colors.red),
+                              tooltip: 'Remove',
+                              onPressed: () => provider.removeScan(roll),
+                            )
+                          : Icon(Icons.people_alt_outlined,
+                              size: 18,
+                              color: cs.onSurface.withValues(alpha: 0.35)),
                     ),
                   );
                 },
@@ -770,6 +824,24 @@ class _LiveAttendanceTabState extends State<_LiveAttendanceTab> {
           padding: const EdgeInsets.all(16),
           child: Consumer<PlacementProvider>(
             builder: (context, provider, _) {
+              // Someone else already finalized — nothing left to do but leave.
+              if (provider.sessionEndedRemotely) {
+                return FilledButton.icon(
+                  onPressed: () => Navigator.of(context).popUntil((route) =>
+                      route.settings.name == '/placement_sessions' ||
+                      route.isFirst),
+                  icon: const Icon(Icons.check),
+                  label: const Text('Done',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold)),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green.shade600,
+                    minimumSize: const Size(double.infinity, 56),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                );
+              }
               return FilledButton.icon(
                 onPressed: (!provider.isFinalizing &&
                         !provider.isLoadingEligibility)
@@ -919,7 +991,8 @@ Future<bool?> _showFinalizeConfirmation(
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'This action is permanent and cannot be undone.',
+                      'This action is permanent and cannot be undone. '
+                      'It ends attendance for every faculty on this session.',
                       style: TextStyle(
                           fontSize: 12, color: Colors.red.shade700),
                     ),

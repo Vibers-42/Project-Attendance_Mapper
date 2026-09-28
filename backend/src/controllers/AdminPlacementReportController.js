@@ -56,7 +56,8 @@ class AdminPlacementReportController {
       title: session.title,
       date: session.date,
       time: session.date, // frontend can format it
-      mode: session.description || 'Offline',
+      // description stores the app's attendanceMode ('OFFLINE' | 'VIRTUAL').
+      mode: session.description === 'VIRTUAL' ? 'Virtual' : 'Offline',
       status: session.status,
       presentCount: session._count.students,
     }));
@@ -78,15 +79,8 @@ class AdminPlacementReportController {
    */
   async downloadReport(req, res) {
     const { id } = req.params;
-    // We use the same service the mobile uses, but pass a dummy faculty ID (e.g. 'ADMIN')
-    // Wait, getSessionReport validates if the user has permission.
-    // Since this is admin, we might need a bypass, or just rely on the service if it doesn't strictly check owner.
-    // Wait, getSessionReport DOES strictly check owner:
-    // const permission = await prisma.placementSessionPermission.findFirst({ where: { sessionId, facultyId } });
-    // if (!permission) throw new ForbiddenError...
-    
-    // To bypass the faculty check for Admins, we can fetch the report data directly here or create an admin version in service.
-    // Let's implement an admin-specific report fetch right here to guarantee isolation.
+    // Admin version of PlacementService.getSessionReport — skips the per-faculty
+    // permission check and also allows sessions that are still ACTIVE.
     const session = await prisma.placementSession.findUnique({
       where: { id },
       select: {
@@ -115,8 +109,10 @@ class AdminPlacementReportController {
       orderBy: { rollNumber: 'asc' },
     });
 
+    // For a still-live session, not-yet-marked (PENDING) students go on the
+    // Absent sheet too — otherwise they'd appear on neither sheet.
     const presentStudents = students.filter((s) => s.attendanceStatus === 'PRESENT');
-    const absentStudents = students.filter((s) => s.attendanceStatus === 'ABSENT');
+    const absentStudents = students.filter((s) => s.attendanceStatus !== 'PRESENT');
 
     const reportData = {
       session: {
@@ -138,6 +134,19 @@ class AdminPlacementReportController {
     res.setHeader('Content-Disposition', `attachment; filename="placement_report_${safeName}.xlsx"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     return res.send(buffer);
+  }
+
+  /**
+   * Permanently deletes a placement session. Students and permissions are
+   * removed by the schema's onDelete: Cascade.
+   */
+  async deleteReport(req, res) {
+    const { id } = req.params;
+    const session = await prisma.placementSession.findUnique({ where: { id }, select: { title: true } });
+    if (!session) throw new NotFoundError('Session not found.');
+
+    await prisma.placementSession.delete({ where: { id } });
+    return sendSuccess(res, { message: `"${session.title}" deleted successfully.` });
   }
 }
 

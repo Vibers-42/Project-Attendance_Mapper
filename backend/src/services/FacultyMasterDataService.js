@@ -92,10 +92,29 @@ class FacultyMasterDataService {
     const faculty = await prisma.faculty.findUnique({ where: { id } });
     if (!faculty) throw new NotFoundError('Faculty member not found.');
 
-    // Atomic: remove from SuperAdmin table and Faculty table together.
+    // Sessions and placement drives reference the faculty row; the database
+    // blocks the delete, which used to surface as a generic 500. Say why.
+    const [sessionCount, placementCount] = await Promise.all([
+      prisma.attendanceSession.count({ where: { facultyId: id } }),
+      prisma.placementSession.count({ where: { createdById: id } }),
+    ]);
+    if (sessionCount > 0 || placementCount > 0) {
+      const parts = [];
+      if (sessionCount > 0) parts.push(`${sessionCount} attendance session(s)`);
+      if (placementCount > 0) parts.push(`${placementCount} placement drive(s)`);
+      throw new ConflictError(
+        `${faculty.name} can't be deleted because they have ${parts.join(' and ')} on record — ` +
+        'deleting them would remove that history from the reports.'
+      );
+    }
+
+    // Atomic: remove from SuperAdmin table and Faculty table together, plus
+    // rows that only exist for this faculty (co-faculty access, timetable).
     // deleteMany is a no-op when no rows match, so no catch needed.
     return await prisma.$transaction(async (tx) => {
       await tx.superAdmin.deleteMany({ where: { employeeId: faculty.facultyId } });
+      await tx.placementSessionPermission.deleteMany({ where: { facultyId: id } });
+      await tx.timetableEntry.deleteMany({ where: { facultyId: id } });
       return tx.faculty.delete({ where: { id } });
     });
   }

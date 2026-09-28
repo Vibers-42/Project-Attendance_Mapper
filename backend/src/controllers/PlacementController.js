@@ -107,6 +107,14 @@ class PlacementController {
     return sendSuccess(res, { data, message: 'Attendance updated.' });
   }
 
+  async unmarkAttendance(req, res) {
+    const { id } = req.params;
+    const { rollNumbers = [] } = req.body;
+    if (!Array.isArray(rollNumbers)) throw new BadRequestError('rollNumbers must be an array.');
+    const data = await placementService.unmarkAttendance(id, req.user.id, rollNumbers);
+    return sendSuccess(res, { data, message: 'Attendance removed.' });
+  }
+
   async getReport(req, res) {
     const { id } = req.params;
     const data = await placementService.getSessionReport(id, req.user.id);
@@ -151,6 +159,18 @@ class PlacementController {
     const { id } = req.params;
     await placementService.deleteSession(id, req.user.id);
     return sendSuccess(res, { message: 'Session deleted successfully.' });
+  }
+
+  async getPermissions(req, res) {
+    const faculty = await placementService.getSessionPermissions(req.params.id, req.user.id);
+    return sendSuccess(res, { data: { faculty }, message: 'Session faculty retrieved.' });
+  }
+
+  async setPermissions(req, res) {
+    const { permissions } = req.body;
+    if (!Array.isArray(permissions)) throw new BadRequestError('permissions must be an array.');
+    const faculty = await placementService.setSessionPermissions(req.params.id, req.user.id, permissions);
+    return sendSuccess(res, { data: { faculty }, message: 'Faculty access updated.' });
   }
 
   async finalizeSession(req, res) {

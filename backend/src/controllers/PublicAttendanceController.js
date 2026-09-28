@@ -1,5 +1,5 @@
 const placementService = require('../services/PlacementService');
-const { sendSuccess, sendError } = require('../utils/apiResponse');
+const { sendSuccess } = require('../utils/apiResponse');
 const { BadRequestError } = require('../utils/AppError');
 
 function escapeHtml(str) {

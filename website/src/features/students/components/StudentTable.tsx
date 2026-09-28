@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { studentService, Student } from '../api/studentService';
+import { studentService } from '../api/studentService';
 import { placementStudentMasterService } from '../../placements/api/placementStudentMasterService';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -134,7 +134,6 @@ export function StudentTable({ moduleType = 'attendance' }: { moduleType?: 'atte
 
   const isPlacement = moduleType === 'placement';
   const queryKey = isPlacement ? 'placement-students' : 'students';
-  const serviceToUse = isPlacement ? placementStudentMasterService : studentService;
 
   const clearSearch = useCallback(() => { setSearch(''); setPage(1); setJumpValue(''); }, []);
   const onSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -285,7 +284,10 @@ export function StudentTable({ moduleType = 'attendance' }: { moduleType?: 'atte
                   : `${from}–${to} of ${total.toLocaleString()} records`}
               </span>
             )}
-            {!isPlacement && yearFilter && total > 0 && (
+            {/* Hidden while searching: the delete removes the WHOLE year, but
+                `total` would then be only the search matches, so the confirm
+                dialog would understate how many students get deleted. */}
+            {!isPlacement && yearFilter && !debouncedSearch && total > 0 && (
               <Button
                 variant="outline"
                 onClick={() => setBulkDelOpen(true)}

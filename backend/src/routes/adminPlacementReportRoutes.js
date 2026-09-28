@@ -8,4 +8,7 @@ router.get('/', adminPlacementReportController.listReports.bind(adminPlacementRe
 // GET /api/v1/admin/placements/reports/:id/download
 router.get('/:id/download', adminPlacementReportController.downloadReport.bind(adminPlacementReportController));
 
+// DELETE /api/v1/admin/placements/reports/:id
+router.delete('/:id', adminPlacementReportController.deleteReport.bind(adminPlacementReportController));
+
 module.exports = router;

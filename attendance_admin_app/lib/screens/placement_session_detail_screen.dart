@@ -4,8 +4,8 @@ import 'package:open_file/open_file.dart';
 import 'package:provider/provider.dart';
 
 import '../models/placement_session_model.dart';
-import '../providers/auth_provider.dart';
 import '../providers/placement_provider.dart';
+import 'placement_create_session_screen.dart' show PlacementFacultyEditor;
 
 class PlacementSessionDetailScreen extends StatelessWidget {
   const PlacementSessionDetailScreen({super.key});
@@ -131,6 +131,26 @@ class PlacementSessionDetailScreen extends StatelessWidget {
             // Action section
             _ActionSection(session: session, cs: cs),
 
+            // Manage co-faculty — OWNER only, while the session isn't finished
+            if (session.myRole == 'OWNER' &&
+                (session.status == 'DRAFT' || session.status == 'ACTIVE')) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.group_add_outlined),
+                  label: const Text('Manage Faculty'),
+                  onPressed: () => _showManageFacultySheet(context, session),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+
             // Delete — OWNER only
             if (session.myRole == 'OWNER') ...[
               const SizedBox(height: 24),
@@ -141,6 +161,90 @@ class PlacementSessionDetailScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Manage faculty sheet ──────────────────────────────────────────────────────
+
+Future<void> _showManageFacultySheet(
+    BuildContext context, PlacementSessionModel session) async {
+  final provider = Provider.of<PlacementProvider>(context, listen: false);
+  provider.loadFaculty();
+  provider.loadSessionPermissions(session.id);
+
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (sheetContext) => Padding(
+      padding: EdgeInsets.fromLTRB(
+          20, 20, 20, 20 + MediaQuery.viewInsetsOf(sheetContext).bottom),
+      child: Consumer<PlacementProvider>(
+        builder: (ctx, p, _) => SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Manage Faculty',
+                style: Theme.of(ctx)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              PlacementFacultyEditor(provider: p),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: p.isLoading || p.isLoadingPermissions
+                      ? null
+                      : () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          final nav = Navigator.of(sheetContext);
+                          final ok = await p.saveSessionPermissions(session.id);
+                          if (ok) {
+                            nav.pop();
+                            messenger.showSnackBar(const SnackBar(
+                              content: Text('Faculty access updated.'),
+                              backgroundColor: Colors.green,
+                            ));
+                          } else {
+                            messenger.showSnackBar(SnackBar(
+                              content: Text(p.errorMessage ??
+                                  'Failed to update session faculty.'),
+                              backgroundColor: Colors.red.shade700,
+                            ));
+                            p.clearError();
+                          }
+                        },
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: p.isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Save'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+  // Don't let this session's list leak into the next create form.
+  provider.clearSelectedPermissions();
 }
 
 // ── Action section ────────────────────────────────────────────────────────────
@@ -253,23 +357,19 @@ class _ActionSectionState extends State<_ActionSection> {
         );
 
       case 'ACTIVE':
-        final currentUserId =
-            Provider.of<AuthProvider>(context, listen: false).currentUser?.id;
-        final isConductor = session.conductedById == null ||
-            session.conductedById == currentUserId;
-
+        // Every OWNER/EDITOR can scan at the same time; scans sync via the server.
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _InfoBanner(
               icon: Icons.sensors,
-              message: isConductor
-                  ? 'This session is currently live.'
-                  : 'Attendance is currently in progress by another authorized faculty.',
+              message: session.isOwnerOrEditor
+                  ? 'This session is currently live. All editors can take attendance together.'
+                  : 'This session is currently live.',
               cs: cs,
-              color: isConductor ? cs.primary : Colors.orange.shade700,
+              color: cs.primary,
             ),
-            if (isConductor && session.isOwnerOrEditor) ...[
+            if (session.isOwnerOrEditor) ...[
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,

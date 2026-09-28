@@ -1,6 +1,7 @@
 const sessionRepository = require('../repositories/AttendanceSessionRepository');
 const recordRepository = require('../repositories/AttendanceRecordRepository');
 const { NotFoundError, ForbiddenError } = require('../utils/AppError');
+const { prefixesForYear, prefixOrClause } = require('../utils/rollNumberYears');
 
 class AttendanceQueryService {
   /**
@@ -37,38 +38,11 @@ class AttendanceQueryService {
     if (queryParams.subject) where.subject = { name: queryParams.subject };
 
     // Year filter: AcademicYear.name is "2024-2025" format, not "Second Year"/"Third Year".
-    // Match by roll number prefix instead: sessions that have records for that cohort.
-    // B1 = regular, B[2-7] = lateral entry (one year ahead of their batch).
-    // Second Year: 25B1 (2025 regular) + 26B[2-7] (2026 lateral entry)
-    // Third Year:  24B1 (2024 regular) + 25B[2-7] (2025 lateral entry)
-    if (queryParams.year === '2nd Year') {
-      where.records = {
-        some: {
-          OR: [
-            { studentRollNumber: { startsWith: '25B1' } },
-            { studentRollNumber: { startsWith: '26B2' } },
-            { studentRollNumber: { startsWith: '26B3' } },
-            { studentRollNumber: { startsWith: '26B4' } },
-            { studentRollNumber: { startsWith: '26B5' } },
-            { studentRollNumber: { startsWith: '26B6' } },
-            { studentRollNumber: { startsWith: '26B7' } },
-          ],
-        },
-      };
-    } else if (queryParams.year === '3rd Year') {
-      where.records = {
-        some: {
-          OR: [
-            { studentRollNumber: { startsWith: '24B1' } },
-            { studentRollNumber: { startsWith: '25B2' } },
-            { studentRollNumber: { startsWith: '25B3' } },
-            { studentRollNumber: { startsWith: '25B4' } },
-            { studentRollNumber: { startsWith: '25B5' } },
-            { studentRollNumber: { startsWith: '25B6' } },
-            { studentRollNumber: { startsWith: '25B7' } },
-          ],
-        },
-      };
+    // Match by roll number prefix instead: sessions that have records for that
+    // cohort (prefix rules live in utils/rollNumberYears.js).
+    const yearPrefixes = prefixesForYear(queryParams.year);
+    if (yearPrefixes) {
+      where.records = { some: { OR: prefixOrClause('studentRollNumber', yearPrefixes) } };
     }
 
     const { sessions, totalCount } = await sessionRepository.findAll({

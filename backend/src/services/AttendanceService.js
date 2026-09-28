@@ -1,5 +1,6 @@
 const sessionRepository = require('../repositories/AttendanceSessionRepository');
 const { NotFoundError, ForbiddenError, ConflictError } = require('../utils/AppError');
+const { findOrCreateAcademicYear } = require('../utils/rollNumberYears');
 
 class AttendanceService {
   /**
@@ -35,7 +36,7 @@ class AttendanceService {
         ? prisma.subject.findFirst({ where: { name: data.subject } })
         : Promise.resolve(null),
       data.year && !data.academicYearId
-        ? prisma.academicYear.findFirst({ where: { name: data.year } })
+        ? findOrCreateAcademicYear(data.year)
         : Promise.resolve(null),
     ]);
 
@@ -172,7 +173,7 @@ class AttendanceService {
         ? prisma.subject.findFirst({ where: { name: data.subject } })
         : Promise.resolve(null),
       data.year && !data.academicYearId
-        ? prisma.academicYear.findFirst({ where: { name: data.year } })
+        ? findOrCreateAcademicYear(data.year)
         : Promise.resolve(null),
       data.roomNumber && data.roomNumber.trim() && !data.roomId
         ? this._resolveRoomId(data.roomNumber)

@@ -16,7 +16,7 @@ interface StudentUploadModalProps {
   moduleType?: 'attendance' | 'placement';
 }
 
-const YEAR_OPTIONS = ['2nd Year', '3rd Year'] as const;
+const YEAR_OPTIONS = ['2nd Year', '3rd Year', '4th Year'] as const;
 type YearOption = typeof YEAR_OPTIONS[number];
 
 const ACCEPTED_EXTENSIONS = ['.xlsx', '.xls'];

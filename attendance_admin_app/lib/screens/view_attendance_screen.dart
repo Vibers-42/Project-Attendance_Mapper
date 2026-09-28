@@ -358,7 +358,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   String? _selectedSubject;
   DateTime? _selectedDate;
 
-  static const List<String> _years = ['2nd Year', '3rd Year'];
+  static const List<String> _years = ['2nd Year', '3rd Year', '4th Year'];
   static const List<String> _subjects = [
     'Employability Skills - Aptitude',
     'Employability Skills - Soft Skills',

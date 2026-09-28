@@ -173,7 +173,7 @@ function BulkDeleteDialog({ isOpen, count, onClose, onConfirm, isPending }: { is
 }
 
 // ─── Filter constants ─────────────────────────────────────────────────────────
-const YEAR_OPTIONS  = ['2nd Year', '3rd Year'] as const;
+const YEAR_OPTIONS  = ['2nd Year', '3rd Year', '4th Year'] as const;
 const TOPIC_OPTIONS = ['All', 'Aptitude', 'Soft Skills'] as const;
 
 function deriveTopicFromSubject(subjectName?: string | null): string | null {

@@ -2,6 +2,7 @@ const StudentRepository = require('../repositories/StudentRepository');
 const DepartmentRepository = require('../repositories/DepartmentRepository');
 const { parseStudentExcel } = require('../utils/excelParser');
 const { ConflictError, NotFoundError } = require('../utils/AppError');
+const { findOrCreateAcademicYear } = require('../utils/rollNumberYears');
 const prisma = require('../config/prisma');
 
 class StudentMasterDataService {
@@ -114,7 +115,7 @@ class StudentMasterDataService {
     // Resolve academicYearId from the year name supplied by the upload form
     let academicYearId = null;
     if (academicYear) {
-      const yr = await prisma.academicYear.findFirst({ where: { name: academicYear } });
+      const yr = await findOrCreateAcademicYear(academicYear);
       academicYearId = yr?.id ?? null;
     }
 

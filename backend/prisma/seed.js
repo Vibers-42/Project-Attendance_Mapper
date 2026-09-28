@@ -23,6 +23,7 @@ async function main() {
       await prisma.academicYear.upsert({ where: { name: to }, update: {}, create: { name: to } });
     }
   }
+  await prisma.academicYear.upsert({ where: { name: '4th Year' }, update: {}, create: { name: '4th Year' } });
   console.log('✅ Seeded AcademicYear records.');
 
   // ==========================================

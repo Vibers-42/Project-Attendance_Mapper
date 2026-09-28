@@ -22,7 +22,7 @@ class _CreateSessionScreenState extends State<CreateSessionScreen> {
   DateTime _selectedDate = DateTime.now();
   bool _initialized = false;
 
-  final List<String> _years = ['2nd Year', '3rd Year'];
+  final List<String> _years = ['2nd Year', '3rd Year', '4th Year'];
   final List<String> _subjects = [
     'Employability Skills - Aptitude',
     'Employability Skills - Soft Skills',

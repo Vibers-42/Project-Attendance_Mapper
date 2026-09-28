@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const { generateWorkbookBuffer } = require('../utils/excelGenerator');
 const { NotFoundError } = require('../utils/AppError');
+const { prefixesForYear, yearForRollNumber, prefixOrClause } = require('../utils/rollNumberYears');
 
 class WorkbookGenerationService {
 
@@ -27,19 +28,15 @@ class WorkbookGenerationService {
     // Fetch ALL students for this year.
     // Strategy: infer the year from the roll numbers of students who attended —
     // this works even when sessions and students have no academicYearId linked.
-    const THIRD_YEAR_PREFIXES = ['24B1', '25B2', '25B3', '25B4', '25B5', '25B6', '25B7'];
-    const SECOND_YEAR_PREFIXES = ['25B1', '26B2', '26B3', '26B4', '26B5', '26B6', '26B7'];
-
     let detectedPrefixes = null;
     for (const roll of allRecordRollNumbers) {
-      const p4 = roll.substring(0, 4);
-      if (THIRD_YEAR_PREFIXES.includes(p4))  { detectedPrefixes = THIRD_YEAR_PREFIXES;  break; }
-      if (SECOND_YEAR_PREFIXES.includes(p4)) { detectedPrefixes = SECOND_YEAR_PREFIXES; break; }
+      const year = yearForRollNumber(roll);
+      if (year) { detectedPrefixes = prefixesForYear(year); break; }
     }
 
     let studentWhere = {};
     if (detectedPrefixes) {
-      studentWhere.OR = detectedPrefixes.map(p => ({ rollNumber: { startsWith: p } }));
+      studentWhere.OR = prefixOrClause('rollNumber', detectedPrefixes);
     } else {
       // Could not infer from roll numbers — fall back to academicYearId name lookup
       const effectiveYearId = academicYearId ||
@@ -51,10 +48,12 @@ class WorkbookGenerationService {
           select: { name: true },
         });
         const yearName = (academicYear?.name || '').toLowerCase();
-        if (yearName.includes('3') || yearName.includes('third')) {
-          studentWhere.OR = THIRD_YEAR_PREFIXES.map(p => ({ rollNumber: { startsWith: p } }));
+        if (yearName.includes('4th') || yearName.includes('fourth')) {
+          studentWhere.OR = prefixOrClause('rollNumber', prefixesForYear('4th Year'));
+        } else if (yearName.includes('3') || yearName.includes('third')) {
+          studentWhere.OR = prefixOrClause('rollNumber', prefixesForYear('3rd Year'));
         } else if (yearName.includes('2') || yearName.includes('second')) {
-          studentWhere.OR = SECOND_YEAR_PREFIXES.map(p => ({ rollNumber: { startsWith: p } }));
+          studentWhere.OR = prefixOrClause('rollNumber', prefixesForYear('2nd Year'));
         } else {
           studentWhere.academicYearId = effectiveYearId;
         }

@@ -111,7 +111,7 @@ function buildYearOptions(): { label: string; batch: string }[] {
   const now = new Date();
   const academicStartYear = now.getMonth() >= 5 ? now.getFullYear() : now.getFullYear() - 1;
   const options: { label: string; batch: string }[] = [{ label: 'All', batch: '' }];
-  for (let yr = 2; yr <= 3; yr++) {
+  for (let yr = 2; yr <= 4; yr++) {
     const admissionYear = academicStartYear - yr + 1;
     const prefix = String(admissionYear).slice(-2);
     options.push({ label: `${yr}${yr === 1 ? 'st' : yr === 2 ? 'nd' : yr === 3 ? 'rd' : 'th'} Year`, batch: prefix });

@@ -132,7 +132,7 @@ class _EditSessionSheet extends StatefulWidget {
 }
 
 class _EditSessionSheetState extends State<_EditSessionSheet> {
-  static const List<String> _years = ['2nd Year', '3rd Year'];
+  static const List<String> _years = ['2nd Year', '3rd Year', '4th Year'];
   static const List<String> _subjects = [
     'Employability Skills - Aptitude',
     'Employability Skills - Soft Skills',

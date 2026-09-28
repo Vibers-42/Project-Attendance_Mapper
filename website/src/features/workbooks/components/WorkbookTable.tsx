@@ -170,7 +170,7 @@ function NoRecordsModal({ open, onClose }: { open: boolean; onClose: () => void 
 }
 
 // ─── Filter constants ─────────────────────────────────────────────────────────
-const YEAR_OPTIONS  = ['2nd Year', '3rd Year'] as const;
+const YEAR_OPTIONS  = ['2nd Year', '3rd Year', '4th Year'] as const;
 const TOPIC_OPTIONS = ['All', 'Aptitude', 'Soft Skills'] as const;
 
 // ─── Main Component ───────────────────────────────────────────────────────────

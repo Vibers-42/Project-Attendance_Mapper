@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const { prefixesForYear, prefixOrClause } = require('../utils/rollNumberYears');
 
 class StudentRepository {
   async findByRollNumber(rollNumber) {
@@ -26,30 +27,10 @@ class StudentRepository {
     if (filters.academicYearId) where.academicYearId = filters.academicYearId;
     if (filters.batch)          where.rollNumber     = { startsWith: filters.batch };
 
-    // Year filter: match by roll-number prefix (same rules as AttendanceQueryService).
-    // Roll format: {year}B{batch}1AI{section}{number} e.g. 25B11AIC38
-    // 2nd Year: 25B1 (2025 regular)  + 26B[2-7] (2026 lateral entry)
-    // 3rd Year: 24B1 (2024 regular)  + 25B[2-7] (2025 lateral entry)
-    if (filters.academicYear === '2nd Year') {
-      where.OR = [
-        { rollNumber: { startsWith: '25B1' } },
-        { rollNumber: { startsWith: '26B2' } },
-        { rollNumber: { startsWith: '26B3' } },
-        { rollNumber: { startsWith: '26B4' } },
-        { rollNumber: { startsWith: '26B5' } },
-        { rollNumber: { startsWith: '26B6' } },
-        { rollNumber: { startsWith: '26B7' } },
-      ];
-    } else if (filters.academicYear === '3rd Year') {
-      where.OR = [
-        { rollNumber: { startsWith: '24B1' } },
-        { rollNumber: { startsWith: '25B2' } },
-        { rollNumber: { startsWith: '25B3' } },
-        { rollNumber: { startsWith: '25B4' } },
-        { rollNumber: { startsWith: '25B5' } },
-        { rollNumber: { startsWith: '25B6' } },
-        { rollNumber: { startsWith: '25B7' } },
-      ];
+    // Year filter: match by roll-number prefix (see utils/rollNumberYears.js).
+    const yearPrefixes = prefixesForYear(filters.academicYear);
+    if (yearPrefixes) {
+      where.OR = prefixOrClause('rollNumber', yearPrefixes);
     } else if (filters.academicYear) {
       where.academicYear = { name: filters.academicYear };
     }

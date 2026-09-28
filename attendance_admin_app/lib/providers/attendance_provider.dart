@@ -328,17 +328,24 @@ class AttendanceProvider with ChangeNotifier {
   // B1 = regular (entered that year), B[2-7] = lateral entry (one year ahead).
   // 2nd Year → 25B1 (2025 regular) or 26B[2-7] (2026 lateral entry)
   // 3rd Year → 24B1 (2024 regular) or 25B[2-7] (2025 lateral entry)
-  // No year set  → any 2nd/3rd year AI roll
+  // 4th Year → 23A91A61 (2023 regular) or 24A95A61 (2024 lateral entry)
+  //            — temporary: this batch uses the older roll-number format.
+  // No year set  → any 2nd/3rd/4th year roll
+  static final _fourthYearRoll = RegExp(r'^(23A91A61|24A95A61)[A-Z0-9]{2}$');
+
   RegExp get _validRollPattern {
     // Roll number suffix: optional section letter + 2-4 digits (e.g. C38, D02, 001, 0012)
     // Accept both "2nd Year"/"Second Year" and "3rd Year"/"Third Year" spellings.
     final y = _year?.toLowerCase() ?? '';
-    if (y.contains('2') || y.contains('second')) {
+    if (y.contains('4th') || y.contains('fourth')) {
+      return _fourthYearRoll;
+    } else if (y.contains('2') || y.contains('second')) {
       return RegExp(r'^(25B1|26B[2-7])1AI[A-Z]?\d{2,4}$');
     } else if (y.contains('3') || y.contains('third')) {
       return RegExp(r'^(24B1|25B[2-7])1AI[A-Z]?\d{2,4}$');
     }
-    return RegExp(r'^(24B1|25B[1-7]|26B[2-7])1AI[A-Z]?\d{2,4}$');
+    return RegExp(
+        r'^((24B1|25B[1-7]|26B[2-7])1AI[A-Z]?\d{2,4}|(23A91A61|24A95A61)[A-Z0-9]{2})$');
   }
 
   // Normalizes a raw scanned/typed input: strips spaces, hyphens, underscores, uppercases.
@@ -361,8 +368,10 @@ class AttendanceProvider with ChangeNotifier {
     final rollNumber = _validStudents[normalized]!;
 
     // Branch check — must be AI branch; suffix is optional section letter + 2-4 digits
+    // (4th Year uses the older 23A91A61xx / 24A95A61xx format)
     final branchPattern = RegExp(r'^(24|25|26)B[1-7]1AI[A-Z]?\d{2,4}$');
-    if (!branchPattern.hasMatch(rollNumber)) {
+    if (!branchPattern.hasMatch(rollNumber) &&
+        !_fourthYearRoll.hasMatch(rollNumber)) {
       return 'Student not registered.';
     }
 

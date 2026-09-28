@@ -10,6 +10,12 @@ import '../models/auth_response_model.dart';
 import '../services/api_service.dart';
 import '../utils/api_exception.dart';
 
+class PlacementParseResult {
+  final List<PlacementStudentModel> students;
+  final List<PlacementStudentModel> missingStudents;
+  PlacementParseResult(this.students, this.missingStudents);
+}
+
 class PlacementRepository {
   final ApiService _apiService;
 
@@ -57,12 +63,6 @@ class PlacementRepository {
       throw ApiException(e.toString());
     }
   }
-
-class PlacementParseResult {
-  final List<PlacementStudentModel> students;
-  final List<PlacementStudentModel> missingStudents;
-  PlacementParseResult(this.students, this.missingStudents);
-}
 
   Future<PlacementParseResult> parseExcel(String filePath) async {
     try {

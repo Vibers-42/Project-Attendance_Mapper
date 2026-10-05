@@ -35,51 +35,37 @@ class SuperAdminAuthService {
    * @param {string} password    — the plain-text password submitted
    * @returns {Promise<{ token: string, user: object }>}
    */
-  async authenticate(employeeId, password) {
-    // ── Step 1: Try the dedicated SuperAdmin table ─────────────────────────
-    const admin = await superAdminRepository.findByEmployeeId(employeeId);
-
-    if (admin) {
-      // Account found in SuperAdmin table — use the passwordHash field
-      if (!admin.isActive) {
-        authLogger.loginFailed(employeeId, 'Super Admin account inactive');
-        throw new UnauthorizedError('Invalid Employee ID or Password.');
-      }
-
-      const isPasswordValid = await comparePassword(password, admin.passwordHash);
-      if (!isPasswordValid) {
-        authLogger.loginFailed(employeeId, 'Incorrect password (SuperAdmin table)');
-        throw new UnauthorizedError('Invalid Employee ID or Password.');
-      }
-
-      if (admin.role !== 'SUPER_ADMIN') {
-        authLogger.loginFailed(employeeId, `Role mismatch in SuperAdmin table: ${admin.role}`);
-        throw new UnauthorizedError('You are not authorized to access the Admin Portal.');
-      }
-
-      authLogger.loginSuccess(employeeId);
-      await superAdminRepository.updateLastLogin(admin.id).catch(() => {});
-
-      const token = generateToken({
-        id:        admin.id,
-        facultyId: admin.employeeId,   // reuse 'facultyId' JWT claim for middleware compatibility
-        role:      admin.role,
-        source:    'superadmin',        // indicates which table this user came from
-      });
-
-      const { passwordHash: _, ...safeAdmin } = admin;
-      return { token, user: { ...safeAdmin, source: 'superadmin' } };
+  async authenticate(rawEmployeeId, password) {
+    // The route has no body validator; a missing field used to reach Prisma or
+    // bcrypt and surface as a 500. Trim so a trailing space from autofill or
+    // copy-paste doesn't turn a correct ID into "invalid credentials".
+    const employeeId = typeof rawEmployeeId === 'string' ? rawEmployeeId.trim() : '';
+    if (!employeeId || typeof password !== 'string' || !password) {
+      throw new UnauthorizedError('Invalid Employee ID or Password.');
     }
 
-    // ── Step 2: Fallback — check Faculty table for SUPER_ADMIN role ────────
-    // This path is used when a faculty member has been promoted to Super Admin.
+    // ── Step 1: Try the dedicated SuperAdmin table ─────────────────────────
+    const admin = await superAdminRepository.findByEmployeeId(employeeId);
+    const adminIsActiveSuperAdmin = !!admin && admin.isActive && admin.role === 'SUPER_ADMIN';
+
+    if (adminIsActiveSuperAdmin && await comparePassword(password, admin.passwordHash)) {
+      return this._issueSuperAdminSession(admin);
+    }
+
+    // ── Step 2: Fallback — check Faculty table ─────────────────────────────
+    // Used when a faculty member was promoted to Super Admin, and also when
+    // the person has a SuperAdmin row but its password no longer matches:
+    // password changes (e.g. from the app) only update Faculty.password, so
+    // the SuperAdmin row's hash goes stale and used to lock them out here.
     const faculty = await prisma.faculty.findUnique({
       where: { facultyId: employeeId },
     });
 
     // No record in either table
     if (!faculty) {
-      authLogger.loginFailed(employeeId, 'Not found in SuperAdmin or Faculty table');
+      authLogger.loginFailed(employeeId, admin
+        ? 'Incorrect password or inactive (SuperAdmin table), no Faculty row'
+        : 'Not found in SuperAdmin or Faculty table');
       throw new UnauthorizedError('Invalid Employee ID or Password.');
     }
 
@@ -89,9 +75,9 @@ class SuperAdminAuthService {
       throw new UnauthorizedError('Invalid Employee ID or Password.');
     }
 
-    // Faculty exists but has not been granted Super Admin privilege
+    // Faculty exists but has not been granted Super Admin privilege either way
     // Return the SAME generic error to prevent user enumeration
-    if (faculty.role !== 'SUPER_ADMIN') {
+    if (faculty.role !== 'SUPER_ADMIN' && !adminIsActiveSuperAdmin) {
       authLogger.loginFailed(employeeId, `Faculty role ${faculty.role} — not authorized for Admin Portal`);
       throw new UnauthorizedError('Invalid Employee ID or Password.');
     }
@@ -101,6 +87,12 @@ class SuperAdminAuthService {
     if (!isPasswordValid) {
       authLogger.loginFailed(employeeId, 'Incorrect password (Faculty table, SUPER_ADMIN)');
       throw new UnauthorizedError('Invalid Employee ID or Password.');
+    }
+
+    // Super Admin access comes from the SuperAdmin row, not Faculty.role:
+    // issue that session so /me resolves the profile from the same table.
+    if (faculty.role !== 'SUPER_ADMIN') {
+      return this._issueSuperAdminSession(admin);
     }
 
     authLogger.loginSuccess(employeeId);
@@ -132,6 +124,22 @@ class SuperAdminAuthService {
         source:       'faculty',
       },
     };
+  }
+
+  /** Logs the success and returns { token, user } for a SuperAdmin-table account. */
+  async _issueSuperAdminSession(admin) {
+    authLogger.loginSuccess(admin.employeeId);
+    await superAdminRepository.updateLastLogin(admin.id).catch(() => {});
+
+    const token = generateToken({
+      id:        admin.id,
+      facultyId: admin.employeeId,   // reuse 'facultyId' JWT claim for middleware compatibility
+      role:      admin.role,
+      source:    'superadmin',        // indicates which table this user came from
+    });
+
+    const { passwordHash: _, ...safeAdmin } = admin;
+    return { token, user: { ...safeAdmin, source: 'superadmin' } };
   }
 
   /**

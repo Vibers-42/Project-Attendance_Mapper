@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema, LoginFormData } from '../utils/validation';
@@ -8,9 +9,17 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Loader2 } from 'lucide-react';
+import { apiClient } from '@/services/api';
 
 export function LoginForm() {
   const loginMutation = useLogin();
+  const isWaking = loginMutation.isPending && loginMutation.failureCount > 0;
+
+  // Ping the backend as soon as the page opens so a sleeping server starts
+  // booting while the user types, instead of after they press Sign in.
+  useEffect(() => {
+    apiClient.get('/health').catch(() => {});
+  }, []);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -87,7 +96,7 @@ export function LoginForm() {
               {loginMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Signing in…
+                  {isWaking ? 'Waking up server…' : 'Signing in…'}
                 </>
               ) : (
                 'Sign in'
